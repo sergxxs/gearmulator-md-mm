@@ -14,8 +14,13 @@
 #include "rmlMouseInput.h"
 #include "rmlRendererJuce.h"
 
+// The GL2/GL3 render interfaces target desktop OpenGL. The iOS SDK only
+// provides OpenGL ES, so they are excluded from the iOS build (see
+// CMakeLists.txt); iOS always uses the portable software renderer below.
+#if !JUCE_IOS
 #include "RmlUi_Renderer_GL2.h"
 #include "RmlUi_Renderer_GL3.h"
+#endif
 
 #ifdef RMLUI_METAL_RENDERER
 #include "RmlUi_Renderer_Metal.h"
@@ -100,7 +105,17 @@ namespace juceRmlUi
 
 		m_renderProxy.reset(new RendererProxy(m_coreInstance, m_dataProvider));
 
-		if (_config.forceSoftwareRenderer == SoftwareRendererMode::ForceOn)
+#if JUCE_IOS
+		// iOS port bring-up (M1): the desktop GL2/GL3 render interfaces are
+		// not available (no desktop OpenGL in the iOS SDK) and the Metal
+		// context attachment is macOS-only (AppKit). Always use the existing
+		// portable software renderer; iOS Metal support is a later milestone.
+		const bool useSoftwareRenderer = true;
+#else
+		const bool useSoftwareRenderer = _config.forceSoftwareRenderer == SoftwareRendererMode::ForceOn;
+#endif
+
+		if (useSoftwareRenderer)
 		{
 			m_renderInterface.reset(new RendererJuce(m_coreInstance));
 			m_renderType = Renderer::Software;
@@ -201,6 +216,11 @@ namespace juceRmlUi
 
 	void RmlComponent::newOpenGLContextCreated()
 	{
+#if JUCE_IOS
+		// Never reached on iOS: no OpenGL context is created there (software
+		// renderer only). The body is compiled out because it uses desktop-GL
+		// symbols and the GL2/GL3 render interfaces.
+#else
 		RmlInterfaces::ScopedAccess access(*this);
 
 		using namespace juce::gl;
@@ -305,10 +325,14 @@ namespace juceRmlUi
 
 		dsp56k::ThreadTools::setCurrentThreadPriority(dsp56k::ThreadPriority::Lowest);
 		dsp56k::ThreadTools::setCurrentThreadName("RmlUI-Renderer");
+#endif // !JUCE_IOS
 	}
 
 	void RmlComponent::renderOpenGL()
 	{
+#if JUCE_IOS
+		// Never reached on iOS, see newOpenGLContextCreated().
+#else
 		{
 			// although we set that we render only manually, juce still calls this function eventhough we didn't
 			// request a repaint, for example when the window is resized.
@@ -386,6 +410,7 @@ namespace juceRmlUi
 		}
 
 		m_renderDone = true;
+#endif // !JUCE_IOS
 	}
 
 	void RmlComponent::openGLContextClosing()

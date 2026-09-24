@@ -88,6 +88,48 @@
         "gearmulator_SYNTH_XENIA": "ON"
       }
     },
+    {
+      "name": "ios-mm",
+      "inherits": "base",
+      "displayName": "iOS Monomachine Standalone (arm64 device, DSP interpreter)",
+      "description": "Native iOS/iPadOS build of the Monomachine JUCE Standalone. Uses the Xcode toolchain installed on the host Mac. Code signing is disabled for compile/link validation; pass CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM and CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=YES for device installs.",
+      "generator": "Xcode",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "iOS",
+        "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "15.0",
+        "CMAKE_OSX_SYSROOT": "iphoneos",
+
+        "CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED": "NO",
+        "CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY": "",
+
+        "gearmulator_BUILD_JUCEPLUGIN": "ON",
+        "gearmulator_BUILD_FX_PLUGIN": "OFF",
+
+        "gearmulator_BUILD_JUCEPLUGIN_Standalone": "ON",
+        "gearmulator_BUILD_JUCEPLUGIN_CLAP": "OFF",
+        "gearmulator_BUILD_JUCEPLUGIN_VST2": "OFF",
+        "gearmulator_BUILD_JUCEPLUGIN_VST3": "OFF",
+        "gearmulator_BUILD_JUCEPLUGIN_AU": "OFF",
+        "gearmulator_BUILD_JUCEPLUGIN_LV2": "OFF",
+
+        "gearmulator_SYNTH_ELEKTRON": "ON",
+        "gearmulator_SYNTH_OSIRUS": "OFF",
+        "gearmulator_SYNTH_OSTIRUS": "OFF",
+        "gearmulator_SYNTH_VAVRA": "OFF",
+        "gearmulator_SYNTH_XENIA": "OFF",
+        "gearmulator_SYNTH_NODALRED2X": "OFF",
+        "gearmulator_SYNTH_JE8086": "OFF",
+
+        "DSP56K_FORCE_INTERPRETER": "ON",
+        "BUILD_TESTING": "OFF"
+      }
+    },
 	{
       "name": "android",
       "inherits": "default",
@@ -151,6 +193,12 @@
       "name": "android",
       "inherits": "default",
       "configurePreset": "android"
+    },
+    {
+      "name": "ios-mm",
+      "configurePreset": "ios-mm",
+      "configuration": "Release",
+      "targets": [ "mmJucePlugin_Standalone" ]
     },
     {
       "name": "github-Windows",

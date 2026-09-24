@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.15)
 
 # build a fat binary that runs on both intel and the new Apple M1 chip
-if(APPLE)
+# (desktop macOS only - iOS cross builds pass CMAKE_SYSTEM_NAME=iOS plus their
+# own architecture/deployment settings via the ios-* presets)
+if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
 	include(xcodeversion.cmake)
 
 	set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "OS X Architectures")

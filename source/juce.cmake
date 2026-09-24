@@ -182,7 +182,9 @@ macro(createJucePlugin targetName productName isSynth plugin4CC binaryDataProjec
 		juce_plugin_modules
 	)
 
-	if(${isSynth})
+	# The mac setup script removes the quarantine flag from desktop macOS
+	# installs; it has no purpose inside an iOS app bundle.
+	if(${isSynth} AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
 		createMacSetupScript(${productName})
 	endif()
 
@@ -330,16 +332,24 @@ macro(createJucePlugin targetName productName isSynth plugin4CC binaryDataProjec
 	endif()
 
 	# ---------- add changelog to each plugin ----------
-	tus_registerChangelog(${targetName})
+	# Skipped when cross-compiling for iOS: changelogGenerator is executed on
+	# the build host during the build, but an iOS cross build would produce an
+	# iOS binary that cannot run on the host Mac.
+	if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+		tus_registerChangelog(${targetName})
 
-	foreach(format IN LISTS plugin_formats)
-		string(REPLACE "FX" "" productNameClean ${productName})
-		install(FILES "${CMAKE_SOURCE_DIR}/doc/changelog_split/changelog_${productNameClean}.txt"
-			DESTINATION .
-			COMPONENT ${productName}-${format})
-	endforeach()
+		foreach(format IN LISTS plugin_formats)
+			string(REPLACE "FX" "" productNameClean ${productName})
+			install(FILES "${CMAKE_SOURCE_DIR}/doc/changelog_split/changelog_${productNameClean}.txt"
+				DESTINATION .
+				COMPONENT ${productName}-${format})
+		endforeach()
+	endif()
 
 	# --------- Server Plugin ---------
+	# The DSP bridge server plugin is a desktop-only SHARED library loaded by
+	# the external bridgeServer executable; neither exists on iOS.
+	if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
 
 	set(serverTarget ${productNameIdentifier}ServerPlugin)
 
@@ -382,6 +392,8 @@ macro(createJucePlugin targetName productName isSynth plugin4CC binaryDataProjec
 		LIBRARY DESTINATION plugins/ COMPONENT DSPBridgeServer)
 
 	add_dependencies(ServerPlugins ${serverTarget})
+
+	endif() # NOT iOS (Server Plugin)
 endmacro()
 
 macro(createJucePluginWithFX targetName productName plugin4CCSynth plugin4CCFX binaryDataProject synthLibProject)
