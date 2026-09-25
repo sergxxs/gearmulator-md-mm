@@ -1105,6 +1105,17 @@ namespace juceRmlUi
 		if (m_targetFPS > 0)
 			minTime += 1.0f / m_targetFPS;
 
+#if JUCE_IOS
+		// Touch responsiveness: while idle the next frame sits far in the
+		// future (idle throttling), and the scheduling above would still delay
+		// the first frame after an input event by one full frame period. Let
+		// that first frame render immediately instead. Sustained event streams
+		// keep exactly the previous pacing, because the last rendered frame
+		// time (m_time) plus one frame period remains the lower bound.
+		if (m_targetFPS > 0)
+			minTime = std::max(t, m_time + 1.0 / m_targetFPS);
+#endif
+
 		m_nextFrameTime = std::min(m_nextFrameTime, minTime);
 
 		startNextFrameTimer();

@@ -16,7 +16,16 @@ namespace jucePluginEditorLib
 	    explicit EditorWindow (juce::AudioProcessor& _p, PluginEditorState& _s, juce::PropertiesFile& _config);
 	    ~EditorWindow() override;
 
-		void paint(juce::Graphics& g) override {}
+		void paint(juce::Graphics& g) override
+		{
+#if JUCE_IOS
+			// iOS aspect-fits the UI root inside the host-given bounds; fill the
+			// letterbox bars around it. Desktop draws nothing here, as before.
+			g.fillAll(juce::Colours::black);
+#else
+			juce::ignoreUnused(g);
+#endif
+		}
 
 		void resized() override;
 
@@ -30,6 +39,11 @@ namespace jucePluginEditorLib
 	private:
 		void setGuiScale(float _percent);
 		void setUiRoot(juce::Component* _component);
+#if JUCE_IOS
+		// Aspect-fits and centers the UI root inside the current, safe-area
+		// reduced viewport. iOS only; desktop sizing is driven by the GUI scale.
+		void layoutUiRootFitViewport();
+#endif
 
 		void timerCallback() override;
 		void fixParentWindowSize() const;

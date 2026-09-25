@@ -44,6 +44,14 @@ void EditorWindow::resized()
 	if(!m_state.getWidth() || !m_state.getHeight())
 		return;
 
+#if JUCE_IOS
+	// iOS: the fullscreen standalone host owns this editor's bounds. Never
+	// derive or persist a desktop GUI scale from them; aspect-fit the UI root
+	// into the (safe-area reduced) viewport instead.
+	layoutUiRootFitViewport();
+	return;
+#endif
+
 	const auto w = getWidth();
 	const auto h = getHeight();
 
@@ -117,6 +125,14 @@ void EditorWindow::setEmbedded(const bool _embedded)
 
 void EditorWindow::setGuiScale(const float _percent)
 {
+#if JUCE_IOS
+	// iOS: the editor cannot dictate its own size - resizing here would fight
+	// the fullscreen host. The desktop GUI scale (config value + menu) is
+	// intentionally inert; the viewport fit in layoutUiRootFitViewport() rules.
+	juce::ignoreUnused(_percent);
+	return;
+#endif
+
 	if(!m_state.getWidth() || !m_state.getHeight())
 		return;
 
@@ -141,6 +157,18 @@ void EditorWindow::setUiRoot(juce::Component* _component)
 
 	if(!m_state.getWidth() || !m_state.getHeight())
 		return;
+
+#if JUCE_IOS
+	// iOS: the fullscreen standalone host owns the editor bounds. Do not
+	// install the desktop resize constrainer (JUCE's mobile wrapper would
+	// apply it via setBoundsConstrained and anchor an aspect-forced editor to
+	// the top-left instead of centering it), do not apply the persisted
+	// desktop GUI scale and do not arm the delayed scale restore. The UI root
+	// is aspect-fitted and centered in layoutUiRootFitViewport() instead.
+	addAndMakeVisible(_component);
+	layoutUiRootFitViewport();
+	return;
+#endif
 
 	m_sizeConstrainer.setMinimumSize(m_state.getWidth() / 10, m_state.getHeight() / 10);
 	m_sizeConstrainer.setMaximumSize(m_state.getWidth() * 4, m_state.getHeight() * 4);
@@ -170,6 +198,54 @@ void EditorWindow::setUiRoot(juce::Component* _component)
 		startTimer(m_scaleRestore.delayedRestorePending() ? 50 : 1);
 	}
 }
+
+#if JUCE_IOS
+void EditorWindow::layoutUiRootFitViewport()
+{
+	auto* root = m_state.getUiRoot();
+	if(!root || !m_state.getWidth() || !m_state.getHeight())
+		return;
+
+	// Available viewport = the host-given bounds minus the display safe-area
+	// insets (notch / home indicator). The standalone editor covers the whole
+	// screen, so the display insets map onto our local bounds directly.
+	auto avail = getLocalBounds();
+
+	if(const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect(getScreenBounds()))
+		display->safeAreaInsets.subtractFrom(avail);
+
+	if(avail.isEmpty())
+		return;
+
+	// The skin's logical size (1100x570dp for the MM panel) is the reference
+	// coordinate space. Uniform aspect-fit scale - never stretched per axis -
+	// so the complete original panel stays visible and proportional.
+	const auto docW = static_cast<float>(m_state.getWidth());
+	const auto docH = static_cast<float>(m_state.getHeight());
+	const auto scale = std::min(static_cast<float>(avail.getWidth()) / docW,
+		static_cast<float>(avail.getHeight()) / docH);
+
+	const auto w = std::max(1, juce::roundToInt(docW * scale));
+	const auto h = std::max(1, juce::roundToInt(docH * scale));
+
+	const auto target = juce::Rectangle<int>(w, h).withCentre(avail.getCentre());
+
+	// Recalculate only when the resulting layout actually changed (first
+	// launch, rotation, viewport resize) - never per frame or per event.
+	if(root->getBounds() == target)
+		return;
+
+	// RmlComponent derives its density-independent pixel ratio from
+	// componentWidth / documentLogicalWidth, so sizing the root to the fitted
+	// rectangle is what scales the complete skin uniformly. JUCE delivers
+	// mouse/touch events in component-local coordinates, so the centering
+	// offset never reaches RmlUi and toRmlPosition()'s component-to-context
+	// mapping keeps working unchanged - the scale is applied exactly once.
+	m_state.resizeEditor(target.getWidth(), target.getHeight());
+	root->setTopLeftPosition(target.getX(), target.getY());
+	repaint();
+}
+#endif
 
 void EditorWindow::timerCallback()
 {
