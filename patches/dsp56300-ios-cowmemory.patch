@@ -1,0 +1,97 @@
+diff --git a/source/dsp56kBase/cowmemory.cpp b/source/dsp56kBase/cowmemory.cpp
+index 111c374e..1b9893fa 100644
+--- a/source/dsp56kBase/cowmemory.cpp
++++ b/source/dsp56kBase/cowmemory.cpp
+@@ -1,8 +1,16 @@
+ #include "cowmemory.h"
+ 
+ #ifdef __APPLE__
++#include <TargetConditionals.h>
+ #include <mach/mach.h>
++#if TARGET_OS_OSX
+ #include <mach/mach_vm.h>
++#else
++// The wide Mach VM interface (mach_vm_*) is unavailable in the iOS SDK.
++// The classic interface (vm_allocate/vm_remap/vm_deallocate) is a public,
++// supported API on iOS and, on 64-bit tasks, has identical semantics.
++#include <mach/vm_map.h>
++#endif
+ #endif
+ 
+ namespace dsp56k
+@@ -12,7 +20,7 @@ namespace dsp56k
+ 	bool CowMemory::allocate(const size_t _bytes)
+ 	{
+ 		clear();
+-#ifdef __APPLE__
++#if defined(__APPLE__) && TARGET_OS_OSX
+ 		if (!_bytes) return false;
+ 		mach_vm_address_t address = 0;
+ 		if (mach_vm_allocate(mach_task_self(), &address, _bytes, VM_FLAGS_ANYWHERE) != KERN_SUCCESS)
+@@ -20,6 +28,16 @@ namespace dsp56k
+ 		m_data = reinterpret_cast<void*>(address);
+ 		m_size = _bytes;
+ 		return true;
++#elif defined(__APPLE__)
++		// iOS: vm_allocate() == mach_vm_allocate() for a 64-bit task: anonymous,
++		// zero-filled, page-aligned R/W memory at a kernel-chosen address.
++		if (!_bytes) return false;
++		vm_address_t address = 0;
++		if (vm_allocate(mach_task_self(), &address, _bytes, VM_FLAGS_ANYWHERE) != KERN_SUCCESS)
++			return false;
++		m_data = reinterpret_cast<void*>(address);
++		m_size = _bytes;
++		return true;
+ #else
+ 		(void)_bytes;
+ 		return false;
+@@ -30,7 +48,7 @@ namespace dsp56k
+ 	{
+ 		if (this == &_source) return false;
+ 		clear();
+-#ifdef __APPLE__
++#if defined(__APPLE__) && TARGET_OS_OSX
+ 		if (!_source.data()) return false;
+ 		mach_vm_address_t address = 0;
+ 		vm_prot_t current = 0, maximum = 0;
+@@ -46,6 +64,25 @@ namespace dsp56k
+ 			return false;
+ 		}
+ 		return true;
++#elif defined(__APPLE__)
++		// iOS: vm_remap() with copy=TRUE creates the same private copy-on-write
++		// duplicate of the whole source region as mach_vm_remap() does on macOS
++		// (identical kernel path for a 64-bit task; same argument order/flags).
++		if (!_source.data()) return false;
++		vm_address_t address = 0;
++		vm_prot_t current = 0, maximum = 0;
++		const auto result = vm_remap(mach_task_self(), &address, _source.size(), 0,
++			VM_FLAGS_ANYWHERE, mach_task_self(), reinterpret_cast<vm_address_t>(_source.data()),
++			TRUE, &current, &maximum, VM_INHERIT_NONE);
++		if (result != KERN_SUCCESS) return false;
++		m_data = reinterpret_cast<void*>(address);
++		m_size = _source.size();
++		if ((current & (VM_PROT_READ | VM_PROT_WRITE)) != (VM_PROT_READ | VM_PROT_WRITE))
++		{
++			clear();
++			return false;
++		}
++		return true;
+ #else
+ 		(void)_source;
+ 		return false;
+@@ -54,9 +91,13 @@ namespace dsp56k
+ 
+ 	void CowMemory::clear()
+ 	{
+-#ifdef __APPLE__
++#if defined(__APPLE__) && TARGET_OS_OSX
+ 		if (m_data)
+ 			mach_vm_deallocate(mach_task_self(), reinterpret_cast<mach_vm_address_t>(m_data), m_size);
++#elif defined(__APPLE__)
++		// iOS: vm_deallocate() == mach_vm_deallocate() for a 64-bit task.
++		if (m_data)
++			vm_deallocate(mach_task_self(), reinterpret_cast<vm_address_t>(m_data), m_size);
+ #endif
+ 		m_data = nullptr;
+ 		m_size = 0;

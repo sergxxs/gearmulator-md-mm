@@ -78,6 +78,43 @@ set(CPACK_RPM_PACKAGE_DESCRIPTION ${CPACK_PACKAGE_DESCRIPTION_SUMMARY})
 
 # ----------------- source
 
+# The dsp56300 submodule pins an upstream commit whose CowMemory implementation
+# uses the wide Mach VM API (mach_vm_*), which the iOS SDK marks unavailable.
+# Until the fix is upstreamed, apply a local overlay patch at configure time.
+# Idempotent: skipped when already applied; desktop/macOS/Linux builds never
+# run this and the patch itself keeps macOS behavior byte-for-byte identical.
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+	set(DSP56300_IOS_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/patches/dsp56300-ios-cowmemory.patch")
+	set(DSP56300_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/source/dsp56300")
+	find_package(Git REQUIRED)
+	execute_process(
+		COMMAND "${GIT_EXECUTABLE}" apply --check "${DSP56300_IOS_PATCH}"
+		WORKING_DIRECTORY "${DSP56300_SOURCE_DIR}"
+		RESULT_VARIABLE DSP56300_IOS_PATCH_APPLICABLE
+		ERROR_QUIET OUTPUT_QUIET)
+	if(DSP56300_IOS_PATCH_APPLICABLE EQUAL 0)
+		execute_process(
+			COMMAND "${GIT_EXECUTABLE}" apply "${DSP56300_IOS_PATCH}"
+			WORKING_DIRECTORY "${DSP56300_SOURCE_DIR}"
+			RESULT_VARIABLE DSP56300_IOS_PATCH_RESULT)
+		if(NOT DSP56300_IOS_PATCH_RESULT EQUAL 0)
+			message(FATAL_ERROR "Failed to apply DSP56300 iOS patch ${DSP56300_IOS_PATCH}")
+		endif()
+		message(STATUS "DSP56300 iOS patch applied (cowmemory.cpp)")
+	else()
+		execute_process(
+			COMMAND "${GIT_EXECUTABLE}" apply --check --reverse "${DSP56300_IOS_PATCH}"
+			WORKING_DIRECTORY "${DSP56300_SOURCE_DIR}"
+			RESULT_VARIABLE DSP56300_IOS_PATCH_APPLIED
+			ERROR_QUIET OUTPUT_QUIET)
+		if(DSP56300_IOS_PATCH_APPLIED EQUAL 0)
+			message(STATUS "DSP56300 iOS patch already applied")
+		else()
+			message(FATAL_ERROR "DSP56300 iOS patch neither applies nor is applied; check the state of source/dsp56300")
+		endif()
+	endif()
+endif()
+
 add_subdirectory(source)
 add_subdirectory(doc)
 
