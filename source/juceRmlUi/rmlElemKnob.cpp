@@ -4,8 +4,30 @@
 
 #include <cmath>
 
+// iOS touch input: fingers wobble a few pixels even during a plain tap, which
+// the knob would otherwise translate into unwanted value detents. A small
+// dead-zone filters that out; desktop mouse behavior is fully unchanged.
+#if defined(__APPLE__)
+#	include <TargetConditionals.h>
+#endif
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+#	define RMLELEMKNOB_TOUCH_DRAG_DEADZONE 1
+#else
+#	define RMLELEMKNOB_TOUCH_DRAG_DEADZONE 0
+#endif
+
 namespace juceRmlUi
 {
+#if RMLELEMKNOB_TOUCH_DRAG_DEADZONE
+	namespace
+	{
+		// Squared travel (in context pixels) a touch must exceed before a drag
+		// starts adjusting the value. Kept slightly above the tap-travel limit
+		// used by push-encoder tap detection so a tap never moves the value.
+		constexpr float g_touchDragDeadZoneSquared = 5.0f * 5.0f;
+	}
+#endif
+
 	ElemKnob::ElemKnob(Rml::CoreInstance& _coreInstance, const Rml::String& _tag): ElemValue(_coreInstance, _tag)
 	{
 		AddEventListener(Rml::EventId::Mousedown, this);
@@ -77,6 +99,9 @@ namespace juceRmlUi
 		case Rml::EventId::Mousedown:
 			m_lastMousePos = helper::getMousePos(_event);
 			m_mouseDownValue = getValue();
+#if RMLELEMKNOB_TOUCH_DRAG_DEADZONE
+			m_touchDragEngaged = false;
+#endif
 			break;
 		case Rml::EventId::Drag:
 			processMouseMove(_event);
@@ -141,6 +166,22 @@ namespace juceRmlUi
 
 		if (range <= 0)
 			return;
+
+#if RMLELEMKNOB_TOUCH_DRAG_DEADZONE
+		// iOS: ignore drag deltas until the finger clearly moved, then re-anchor
+		// so the value does not jump by the dead-zone distance. This keeps taps
+		// from turning the knob while leaving intentional drags smooth.
+		if (!m_touchDragEngaged)
+		{
+			const auto travel = helper::getMousePos(_event) - m_lastMousePos;
+			if (travel.x * travel.x + travel.y * travel.y < g_touchDragDeadZoneSquared)
+				return;
+			m_touchDragEngaged = true;
+			m_lastMousePos = helper::getMousePos(_event);
+			m_mouseDownValue = getValue();
+			return;
+		}
+#endif
 
 		float mod = 1.0f;
 

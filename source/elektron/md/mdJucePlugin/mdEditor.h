@@ -199,6 +199,8 @@ namespace mdJucePlugin
 		{
 			juceRmlUi::ElemButton* button = nullptr;
 			md::PanelPacket packet;
+			// Press timestamp; only evaluated by the iOS touch hold-latch.
+			double pressTimeMilliseconds = 0.0;
 		};
 		std::vector<ActivePanelButton> m_activePanelButtons;
 

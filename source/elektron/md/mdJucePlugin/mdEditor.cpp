@@ -93,6 +93,17 @@ namespace mdJucePlugin
 		constexpr int g_panelTimerIntervalMilliseconds = 33;
 		constexpr size_t g_ledTransitionBatchSize = 256;
 
+#if JUCE_IOS
+		// Touch tuning. A tap on a push-encoder must stay below the knob's drag
+		// dead-zone travel (5 context px, see rmlElemKnob.cpp) so a tap never
+		// also turns the encoder. A panel-key press held at least this long is
+		// promoted to a latched hold on release - the touch stand-in for the
+		// desktop's Shift-click hold.
+		constexpr double g_touchEncoderTapMaxMilliseconds = 350.0;
+		constexpr float g_touchEncoderTapMaxTravel = 4.0f;	// context pixels
+		constexpr double g_touchPanelHoldLatchMilliseconds = 500.0;
+#endif
+
 		constexpr PanelButton g_panelButtons[] =
 		{
 			{ "trigKey0", md::PanelControl::Trigger1 }, { "trigKey1", md::PanelControl::Trigger2 },
@@ -539,8 +550,12 @@ namespace mdJucePlugin
 					[this, b, packet, control = pb.control](Rml::Event& _event)
 				{
 					const bool shiftDown = _event.GetParameter<int>("shift_key", 0) != 0;
+#if !JUCE_IOS
+					// On iOS the touch hold-latch replaces Shift; an unmodified
+					// bank press is then a chord target and must not end the hold.
 					if(!shiftDown && !m_shiftPanelLatch.empty())
 						releasePanelButtonGestures();
+#endif
 					if(panelAffordances::usesPersistentPatternBankLatch(getModel(),
 						control, !m_shiftPanelLatch.empty()))
 						togglePatternBankLatch(b, *packet);
@@ -623,13 +638,27 @@ namespace mdJucePlugin
 		const md::PanelControl _control, const md::PanelPacket& _packet,
 		const bool _shiftDown)
 	{
+#if JUCE_IOS
+		// Touch: tapping a latched (held) key lets go of every held key - the
+		// touch counterpart of releasing Shift on the desktop.
+		if(_button && m_shiftPanelLatch.contains(_control))
+		{
+			releasePanelButtonGestures();
+			return;
+		}
+#endif
+
 		if(!_button || _button->isChecked())
 			return;
 
+#if !JUCE_IOS
 		// A missing native key-up must never let an earlier hold leak into a new,
-		// unmodified click before the timer fail-safe gets its next turn.
+		// unmodified click before the timer fail-safe gets its next turn. On iOS
+		// there is no keyboard: held keys come from the touch hold-latch and an
+		// unmodified press is the chord target, so the hold must survive it.
 		if(!_shiftDown && !m_shiftPanelLatch.empty())
 			releasePanelButtonGestures();
+#endif
 
 		const auto action = m_shiftPanelLatch.press(_control, _shiftDown);
 		if(action == panelAffordances::ShiftPanelLatch::PressAction::Ignored)
@@ -640,7 +669,8 @@ namespace mdJucePlugin
 
 		juceRmlUi::ElemButton::setChecked(_button, true);
 		if(action == panelAffordances::ShiftPanelLatch::PressAction::Momentary)
-			m_activePanelButtons.push_back({ _button, _packet });
+			m_activePanelButtons.push_back({ _button, _packet,
+				juce::Time::getMillisecondCounterHiRes() });
 
 		const auto combined = m_panelRows.press(_packet);
 		(void)sendPanelEvent(combined.row, combined.mask);
@@ -656,6 +686,24 @@ namespace mdJucePlugin
 			[_button](const ActivePanelButton& _active) { return _active.button == _button; });
 		if(it == m_activePanelButtons.end())
 			return;
+
+#if JUCE_IOS
+		// Touch stand-in for the desktop Shift-click hold: lifting the finger
+		// after a long press keeps the key held (latched) instead of releasing
+		// it. ShiftPanelLatch applies its usual chord rules, so a gesture that
+		// starts with a trig may collect further long-pressed trigs while a
+		// second non-trig hold stays momentary. The hold ends by tapping any
+		// held key again, by a direct-label gesture, or by the cancel paths.
+		if(juce::Time::getMillisecondCounterHiRes() - it->pressTimeMilliseconds
+				>= g_touchPanelHoldLatchMilliseconds
+			&& m_shiftPanelLatch.press(_control, true)
+				== panelAffordances::ShiftPanelLatch::PressAction::Latched)
+		{
+			// Keep the panel row bit held and the button visuals checked.
+			m_activePanelButtons.erase(it);
+			return;
+		}
+#endif
 
 		m_activePanelButtons.erase(it);
 		juceRmlUi::ElemButton::setChecked(_button, false);
@@ -1789,6 +1837,47 @@ namespace mdJucePlugin
 						(void)sendPanelEvent(combined.row, combined.mask);
 					}
 				});
+
+#if JUCE_IOS
+			// Touch: a tap (short contact below the knob's drag dead-zone) is
+			// the encoder push. The press/release pair goes through the panel
+			// step queue, so the firmware sees distinct edges one panel-timer
+			// tick apart - the same mechanism the navigation pulses use.
+			// Rotation drags exceed the travel/time limits and never trigger
+			// it; the Alt-click press path above remains for pointer devices.
+			{
+				struct TouchTap
+				{
+					Rml::Vector2f down;
+					double timeMs = -1.0;
+				};
+				const auto tap = std::make_shared<TouchTap>();
+				juceRmlUi::EventListener::Add(_knob, Rml::EventId::Mousedown,
+					[tap](Rml::Event& _event)
+					{
+						tap->down = juceRmlUi::helper::getMousePos(_event);
+						tap->timeMs = juce::Time::getMillisecondCounterHiRes();
+					});
+				juceRmlUi::EventListener::Add(_knob, Rml::EventId::Mouseup,
+					[this, packet, tap](Rml::Event& _event)
+					{
+						if(tap->timeMs < 0.0)
+							return;
+						const auto heldMs =
+							juce::Time::getMillisecondCounterHiRes() - tap->timeMs;
+						tap->timeMs = -1.0;
+						if(heldMs > g_touchEncoderTapMaxMilliseconds)
+							return;
+						const auto travel =
+							juceRmlUi::helper::getMousePos(_event) - tap->down;
+						if(travel.x * travel.x + travel.y * travel.y
+							> g_touchEncoderTapMaxTravel * g_touchEncoderTapMaxTravel)
+							return;
+						m_panelSteps.push_back({ *packet, true });
+						m_panelSteps.push_back({ *packet, false });
+					});
+			}
+#endif
 		}
 		_knob->setMinValue(0.0f);
 		_knob->setMaxValue(g_encoderRange);
@@ -2059,11 +2148,15 @@ namespace mdJucePlugin
 		const auto modifiers = juce::ModifierKeys::getCurrentModifiersRealtime();
 		if(m_encoderPress.active() && (!modifiers.isAltDown() || !modifiers.isLeftButtonDown()))
 			releaseEncoderPress();
+#if !JUCE_IOS
 		// Some plugin hosts can lose the modifier key-up when focus changes. Poll
 		// native state as a fail-safe so no panel row remains held indefinitely.
+		// On iOS held keys come from the touch hold-latch (no Shift key exists),
+		// so this fail-safe must not run there - it would end every hold at once.
 		if(!m_shiftPanelLatch.empty()
 			&& !juce::ModifierKeys::getCurrentModifiersRealtime().isShiftDown())
 			releasePanelButtonGestures();
+#endif
 
 		const auto hadFrontPanelSnapshot = m_frontPanelSnapshotValid;
 		m_frontPanelSnapshotValid = refreshFrontPanelState(nowMilliseconds);

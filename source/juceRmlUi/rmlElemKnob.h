@@ -45,6 +45,9 @@ namespace juceRmlUi
 		float m_speedScaleCtrl = 0.2f;
 		float m_speedScaleAlt = 0.5f;
 
+		// iOS touch drag dead-zone state; stays true (inactive) on desktop.
+		bool m_touchDragEngaged = true;
+
 		float m_lastMod = -1.0f;
 		bool m_endless = false;
 

@@ -209,6 +209,13 @@ namespace juceRmlUi
 		RmlDrag m_drag;
 		juce::ModifierKeys m_currentModifierKeys;
 
+#if JUCE_IOS
+		// Single-pointer touch policy: the first finger that goes down owns the
+		// RmlUi cursor until it lifts; other fingers are ignored meanwhile.
+		bool acceptPointerEvent(const juce::MouseEvent& _event, bool _isDown, bool _isUp);
+		int m_activeTouchSourceIndex = -1;
+#endif
+
 		bool m_updating = true;
 
 		Rml::Vector2i m_documentSize{0,0};

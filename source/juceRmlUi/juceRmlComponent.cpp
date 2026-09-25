@@ -548,6 +548,10 @@ namespace juceRmlUi
 	void RmlComponent::mouseDown(const juce::MouseEvent& _event)
 	{
 		Component::mouseDown(_event);
+#if JUCE_IOS
+		if (!acceptPointerEvent(_event, true, false))
+			return;
+#endif
 		RmlInterfaces::ScopedAccess access(*this);
 
 		// RmlUi button events use the context's current mouse position.  Keep it
@@ -563,6 +567,10 @@ namespace juceRmlUi
 	void RmlComponent::mouseUp(const juce::MouseEvent& _event)
 	{
 		Component::mouseUp(_event);
+#if JUCE_IOS
+		if (!acceptPointerEvent(_event, false, true))
+			return;
+#endif
 		RmlInterfaces::ScopedAccess access(*this);
 		const auto pos = toRmlPosition(_event);
 		mouseInput::processButtonUp(*m_rmlContext, { pos.x, pos.y },
@@ -573,6 +581,10 @@ namespace juceRmlUi
 	void RmlComponent::mouseMove(const juce::MouseEvent& _event)
 	{
 		Component::mouseMove(_event);
+#if JUCE_IOS
+		if (!acceptPointerEvent(_event, false, false))
+			return;
+#endif
 		RmlInterfaces::ScopedAccess access(*this);
 
 		const auto pos = toRmlPosition(_event);
@@ -584,6 +596,10 @@ namespace juceRmlUi
 	void RmlComponent::mouseDrag(const juce::MouseEvent& _event)
 	{
 		Component::mouseDrag(_event);
+#if JUCE_IOS
+		if (!acceptPointerEvent(_event, false, false))
+			return;
+#endif
 		RmlInterfaces::ScopedAccess access(*this);
 
 		const auto pos = toRmlPosition(_event);
@@ -600,6 +616,10 @@ namespace juceRmlUi
 	void RmlComponent::mouseExit(const juce::MouseEvent& _event)
 	{
 		Component::mouseExit(_event);
+#if JUCE_IOS
+		if (!acceptPointerEvent(_event, false, false))
+			return;
+#endif
 		RmlInterfaces::ScopedAccess access(*this);
 		if (m_rmlContext)
 			m_rmlContext->ProcessMouseLeave();
@@ -610,6 +630,10 @@ namespace juceRmlUi
 	void RmlComponent::mouseEnter(const juce::MouseEvent& _event)
 	{
 		Component::mouseEnter(_event);
+#if JUCE_IOS
+		if (!acceptPointerEvent(_event, false, false))
+			return;
+#endif
 		RmlInterfaces::ScopedAccess access(*this);
 
 		const auto pos = toRmlPosition(_event);
@@ -816,6 +840,37 @@ namespace juceRmlUi
 		// continue waiting
 		startNextFrameTimer();
 	}
+
+#if JUCE_IOS
+	bool RmlComponent::acceptPointerEvent(const juce::MouseEvent& _event, const bool _isDown, const bool _isUp)
+	{
+		// RmlUi tracks a single mouse cursor, but JUCE reports every finger as
+		// its own MouseInputSource. Without a filter a second finger teleports
+		// the cursor mid-gesture and corrupts an active knob drag or a held
+		// button, so the first finger that goes down owns the pointer until it
+		// lifts. Hover/move events pass through while no gesture is active.
+		const auto index = _event.source.getIndex();
+
+		if (m_activeTouchSourceIndex < 0)
+		{
+			if (_isDown)
+			{
+				m_activeTouchSourceIndex = index;
+				return true;
+			}
+			// An up whose down was filtered out must not reach RmlUi either.
+			return !_isUp;
+		}
+
+		if (index != m_activeTouchSourceIndex)
+			return false;
+
+		if (_isUp)
+			m_activeTouchSourceIndex = -1;
+
+		return true;
+	}
+#endif
 
 	juce::Point<int> RmlComponent::toRmlPosition(const juce::MouseEvent& _e) const
 	{
