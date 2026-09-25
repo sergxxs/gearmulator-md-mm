@@ -331,10 +331,15 @@ void PluginEditorState::openMenu(const Rml::Event& _event)
 	if(getEditor()->openContextMenuForParameter(_event))
 		return;
 
+	juceRmlUi::Menu menu;
+
+#if !JUCE_IOS
+	// iOS: the automatic aspect-fit viewport (EditorWindow::layoutUiRootFitViewport)
+	// is authoritative there and EditorWindow::setGuiScale is deliberately inert,
+	// so a GUI-scale submenu would only offer dead entries - and applying an old
+	// persisted desktop percentage could crop the panel. Desktop is unchanged.
 	const auto& config = m_processor.getConfig();
     const auto scale = juce::roundToInt(config.getDoubleValue("scale", 100));
-
-	juceRmlUi::Menu menu;
 
 	juceRmlUi::Menu scaleMenu;
 	scaleMenu.addEntry("50%", scale == 50, [this] { setGuiScale(50); });
@@ -352,6 +357,7 @@ void PluginEditorState::openMenu(const Rml::Event& _event)
 	menu.addSubMenu("GUI Scale", std::move(scaleMenu));
 
 	menu.addSeparator();
+#endif
 
 	auto& regions = m_processor.getController().getParameterDescriptions().getRegions();
 
@@ -405,7 +411,8 @@ void PluginEditorState::openMenu(const Rml::Event& _event)
 		{
 			menu.addSeparator();
 
-#ifdef JUCE_MAC
+#if defined(JUCE_MAC) || JUCE_IOS
+			// iOS: shown for hardware keyboards; the entries themselves work by touch.
 			const std::string ctrlName = "Cmd";
 #else
 			const std::string ctrlName = "Ctrl";

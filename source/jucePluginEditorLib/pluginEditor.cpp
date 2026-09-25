@@ -44,6 +44,21 @@
 #include "RmlUi/Core/ElementDocument.h"
 #include "RmlUi/Core/Elements/ElementFormControlInput.h"
 
+#if JUCE_IOS
+// Only needed to classify long-press targets for the touch menu gesture.
+#include "juceRmlUi/rmlElemButton.h"
+#include "juceRmlUi/rmlElemCanvas.h"
+#include "juceRmlUi/rmlElemKnob.h"
+#include "RmlUi/Core/Elements/ElementFormControl.h"
+
+namespace
+{
+	// Long-press on a non-interactive panel area opens the context menu.
+	constexpr double g_touchMenuLongPressMilliseconds = 500.0;
+	constexpr float g_touchMenuMaxTravel = 8.0f;	// context pixels
+}
+#endif
+
 namespace jucePluginEditorLib
 {
 	namespace
@@ -129,6 +144,69 @@ namespace jucePluginEditorLib
 					openMenu(_event);
 			}
 		});
+
+#if JUCE_IOS
+		// Touch: a long-press on a non-interactive part of the panel (chassis,
+		// decorative labels, letterbox-adjacent background) opens the exact
+		// same context menu as a desktop right-click, through the same
+		// openMenu() path. It is evaluated at finger lift, so no timer runs,
+		// and every interactive element keeps its own gesture: a button, knob,
+		// canvas (LCD), form control or clickable affordance label anywhere in
+		// the event-target chain disarms it. The menu itself is an RmlUi
+		// document that already closes on any tap outside of it.
+		{
+			struct TouchMenuGesture
+			{
+				Rml::Vector2f down;
+				double timeMs = -1.0;
+			};
+			const auto gesture = std::make_shared<TouchMenuGesture>();
+
+			const auto isInteractive = [](Rml::Element* _element)
+			{
+				for (; _element; _element = _element->GetParentNode())
+				{
+					if (dynamic_cast<juceRmlUi::ElemButton*>(_element)
+						|| dynamic_cast<juceRmlUi::ElemKnob*>(_element)
+						|| dynamic_cast<juceRmlUi::ElemCanvas*>(_element)
+						|| dynamic_cast<Rml::ElementFormControl*>(_element))
+						return true;
+					// Clickable label affordances (track/page/chord labels).
+					if (_element->IsClassSet("panelAffordance"))
+						return true;
+				}
+				return false;
+			};
+
+			juceRmlUi::EventListener::Add(doc, Rml::EventId::Mousedown,
+				[gesture, isInteractive](Rml::Event& _event)
+				{
+					gesture->down = juceRmlUi::helper::getMousePos(_event);
+					gesture->timeMs = isInteractive(_event.GetTargetElement())
+						? -1.0
+						: juce::Time::getMillisecondCounterHiRes();
+				});
+
+			juceRmlUi::EventListener::Add(doc, Rml::EventId::Mouseup,
+				[this, gesture](Rml::Event& _event)
+				{
+					if (gesture->timeMs < 0.0)
+						return;
+					const auto heldMs =
+						juce::Time::getMillisecondCounterHiRes() - gesture->timeMs;
+					gesture->timeMs = -1.0;
+					if (heldMs < g_touchMenuLongPressMilliseconds)
+						return;
+					const auto travel =
+						juceRmlUi::helper::getMousePos(_event) - gesture->down;
+					if (travel.x * travel.x + travel.y * travel.y
+						> g_touchMenuMaxTravel * g_touchMenuMaxTravel)
+						return;
+					if (!settingsOpened())
+						openMenu(_event);
+				});
+		}
+#endif
 
 #if _DEBUG
 		juceRmlUi::EventListener::Add(getRmlRootElement(), Rml::EventId::Keydown, [this](Rml::Event& _event)
