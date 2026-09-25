@@ -1,0 +1,17 @@
+diff --git a/src/asmjit/core/virtmem.cpp b/src/asmjit/core/virtmem.cpp
+index 08278e4..6bbebda 100644
+--- a/src/asmjit/core/virtmem.cpp
++++ b/src/asmjit/core/virtmem.cpp
+@@ -30,8 +30,11 @@
+     #include <TargetConditionals.h>
+     #if TARGET_OS_OSX
+       #include <sys/utsname.h>
+-      #include <libkern/OSCacheControl.h> // sys_icache_invalidate().
+     #endif
++    // sys_icache_invalidate() is used by flushInstructionCache(), which is
++    // compiled for all Apple platforms (not only macOS); its declaration is
++    // available in the iOS SDK as well, so include it unconditionally here.
++    #include <libkern/OSCacheControl.h> // sys_icache_invalidate().
+     // Older SDK doesn't define `MAP_JIT`.
+     #ifndef MAP_JIT
+       #define MAP_JIT 0x800

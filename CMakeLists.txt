@@ -78,41 +78,48 @@ set(CPACK_RPM_PACKAGE_DESCRIPTION ${CPACK_PACKAGE_DESCRIPTION_SUMMARY})
 
 # ----------------- source
 
-# The dsp56300 submodule pins an upstream commit whose CowMemory implementation
-# uses the wide Mach VM API (mach_vm_*), which the iOS SDK marks unavailable.
-# Until the fix is upstreamed, apply a local overlay patch at configure time.
+# The dsp56300 submodule (and its nested asmjit submodule) pin upstream commits
+# that use APIs the iOS SDK marks unavailable (mach_vm_* in CowMemory) or miss
+# an include on iOS (sys_icache_invalidate in asmjit's virtmem.cpp). Until the
+# fixes are upstreamed, apply local overlay patches at configure time.
 # Idempotent: skipped when already applied; desktop/macOS/Linux builds never
-# run this and the patch itself keeps macOS behavior byte-for-byte identical.
+# run this and the patches keep macOS behavior byte-for-byte identical.
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-	set(DSP56300_IOS_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/patches/dsp56300-ios-cowmemory.patch")
-	set(DSP56300_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/source/dsp56300")
 	find_package(Git REQUIRED)
-	execute_process(
-		COMMAND "${GIT_EXECUTABLE}" apply --check "${DSP56300_IOS_PATCH}"
-		WORKING_DIRECTORY "${DSP56300_SOURCE_DIR}"
-		RESULT_VARIABLE DSP56300_IOS_PATCH_APPLICABLE
-		ERROR_QUIET OUTPUT_QUIET)
-	if(DSP56300_IOS_PATCH_APPLICABLE EQUAL 0)
+	function(gearmulator_apply_ios_patch _patch _dir)
 		execute_process(
-			COMMAND "${GIT_EXECUTABLE}" apply "${DSP56300_IOS_PATCH}"
-			WORKING_DIRECTORY "${DSP56300_SOURCE_DIR}"
-			RESULT_VARIABLE DSP56300_IOS_PATCH_RESULT)
-		if(NOT DSP56300_IOS_PATCH_RESULT EQUAL 0)
-			message(FATAL_ERROR "Failed to apply DSP56300 iOS patch ${DSP56300_IOS_PATCH}")
-		endif()
-		message(STATUS "DSP56300 iOS patch applied (cowmemory.cpp)")
-	else()
-		execute_process(
-			COMMAND "${GIT_EXECUTABLE}" apply --check --reverse "${DSP56300_IOS_PATCH}"
-			WORKING_DIRECTORY "${DSP56300_SOURCE_DIR}"
-			RESULT_VARIABLE DSP56300_IOS_PATCH_APPLIED
+			COMMAND "${GIT_EXECUTABLE}" apply --check "${_patch}"
+			WORKING_DIRECTORY "${_dir}"
+			RESULT_VARIABLE _applicable
 			ERROR_QUIET OUTPUT_QUIET)
-		if(DSP56300_IOS_PATCH_APPLIED EQUAL 0)
-			message(STATUS "DSP56300 iOS patch already applied")
+		if(_applicable EQUAL 0)
+			execute_process(
+				COMMAND "${GIT_EXECUTABLE}" apply "${_patch}"
+				WORKING_DIRECTORY "${_dir}"
+				RESULT_VARIABLE _result)
+			if(NOT _result EQUAL 0)
+				message(FATAL_ERROR "Failed to apply iOS patch ${_patch} in ${_dir}")
+			endif()
+			message(STATUS "iOS patch applied: ${_patch}")
 		else()
-			message(FATAL_ERROR "DSP56300 iOS patch neither applies nor is applied; check the state of source/dsp56300")
+			execute_process(
+				COMMAND "${GIT_EXECUTABLE}" apply --check --reverse "${_patch}"
+				WORKING_DIRECTORY "${_dir}"
+				RESULT_VARIABLE _applied
+				ERROR_QUIET OUTPUT_QUIET)
+			if(_applied EQUAL 0)
+				message(STATUS "iOS patch already applied: ${_patch}")
+			else()
+				message(FATAL_ERROR "iOS patch ${_patch} neither applies nor is applied; check the state of ${_dir}")
+			endif()
 		endif()
-	endif()
+	endfunction()
+	gearmulator_apply_ios_patch(
+		"${CMAKE_CURRENT_SOURCE_DIR}/patches/dsp56300-ios-cowmemory.patch"
+		"${CMAKE_CURRENT_SOURCE_DIR}/source/dsp56300")
+	gearmulator_apply_ios_patch(
+		"${CMAKE_CURRENT_SOURCE_DIR}/patches/asmjit-ios-icache.patch"
+		"${CMAKE_CURRENT_SOURCE_DIR}/source/dsp56300/source/asmjit")
 endif()
 
 add_subdirectory(source)
