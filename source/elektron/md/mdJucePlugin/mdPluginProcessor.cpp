@@ -1,6 +1,7 @@
 #include "mdPluginProcessor.h"
 
 #include "mdController.h"
+#include "mdIosStateSaver.h"
 #include "mdPluginEditorState.h"
 #include "mdStorageImage.h"
 
@@ -423,6 +424,15 @@ namespace mdJucePlugin
 		// The environment switch is also useful in hosts without an open editor.
 		if(getPlugin().getRealtimeInstrumentation().isEnabled())
 			setPerformanceDiagnosticsEnabled(true);
+
+#if JUCE_IOS
+		// iOS has no close-button save path: persist the session whenever the
+		// app resigns active instead (see mdIosStateSaver.mm). Restore is the
+		// existing StandalonePluginHolder::reloadPluginState at startup plus
+		// the deferred serviceProjectStateRestore once the device is ready.
+		if(!_ephemeralConfig && juce::JUCEApplicationBase::isStandaloneApp())
+			installIosBackgroundStateSaver();
+#endif
 	}
 
 	juce::AudioProcessor::BusesProperties AudioPluginAudioProcessor::createBusesProperties()

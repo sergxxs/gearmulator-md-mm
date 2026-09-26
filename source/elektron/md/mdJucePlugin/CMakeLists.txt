@@ -43,6 +43,13 @@ set(SOURCES
 	mdSettingsAudioInput.cpp mdSettingsAudioInput.h
 )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+	# iOS standalone: save the session state when the app resigns active. The
+	# desktop close-button save path never runs on iOS. Compiled only here so
+	# desktop builds contain no Objective-C++.
+	list(APPEND SOURCES mdIosStateSaver.mm mdIosStateSaver.h)
+endif()
+
 set(COMMON_ASSETS
 	"../../../jucePluginData/elektronKnobBlankAtlas.png"
 	"../../../jucePluginData/elektronMasterKnobAtlas.png"
