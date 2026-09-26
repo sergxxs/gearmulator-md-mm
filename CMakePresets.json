@@ -127,6 +127,8 @@
         "gearmulator_SYNTH_JE8086": "OFF",
 
         "DSP56K_FORCE_INTERPRETER": "ON",
+        "GEARMULATOR_MDMM_APPLE_THINLTO": "ON",
+        "GEARMULATOR_MDMM_APPLE_OPTIMIZE_DSP": "ON",
         "BUILD_TESTING": "OFF"
       }
     },
