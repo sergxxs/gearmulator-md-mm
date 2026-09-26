@@ -3,6 +3,11 @@
 #include "pluginEditor.h"
 #include "pluginEditorState.h"
 
+#if JUCE_IOS
+#include "iosControlPanel.h"
+#include "jucePluginLib/processor.h"
+#endif
+
 #include "dsp56kBase/logging.h"
 
 #include "juceRmlPlugin/rmlParameterBinding.h"
@@ -28,6 +33,19 @@ EditorWindow::EditorWindow(juce::AudioProcessor& _p, PluginEditorState& _s, juce
 		})
 {
 	addMouseListener(this, true);
+
+#if JUCE_IOS
+	// iOS-only application control panel entry: a small always-visible button.
+	// There is no menu bar and no right-click on iOS; this is the one obvious,
+	// touch-reachable entry point. It sits in the safe-area top-right corner
+	// (in the letterbox area when one exists) and never captures touches
+	// outside its own small bounds, so the synth UI stays fully operable.
+	m_iosMenuButton = std::make_unique<juce::TextButton>(juce::CharPointer_UTF8("\xe2\x80\xa2\xe2\x80\xa2\xe2\x80\xa2"));
+	m_iosMenuButton->setAlpha(0.8f);
+	m_iosMenuButton->onClick = [this] { openIosControlPanel(); };
+	m_iosMenuButton->setAlwaysOnTop(true);
+	addAndMakeVisible(*m_iosMenuButton);
+#endif
 
 	setUiRoot(m_state.getUiRoot());
 }
@@ -217,6 +235,14 @@ void EditorWindow::layoutUiRootFitViewport()
 	if(avail.isEmpty())
 		return;
 
+	// iOS overlays: keep the control-panel button in the safe-area top-right
+	// corner and the panel (when open) covering the whole editor. Positioned
+	// before the early-out below so they always track the viewport.
+	if(m_iosMenuButton)
+		m_iosMenuButton->setBounds(avail.getRight() - 56, avail.getY() + 8, 48, 36);
+	if(m_iosControlPanel)
+		m_iosControlPanel->setBounds(getLocalBounds());
+
 	// The skin's logical size (1100x570dp for the MM panel) is the reference
 	// coordinate space. Uniform aspect-fit scale - never stretched per axis -
 	// so the complete original panel stays visible and proportional.
@@ -244,6 +270,39 @@ void EditorWindow::layoutUiRootFitViewport()
 	m_state.resizeEditor(target.getWidth(), target.getHeight());
 	root->setTopLeftPosition(target.getX(), target.getY());
 	repaint();
+}
+
+void EditorWindow::openIosControlPanel()
+{
+	if(m_iosControlPanel)
+		return;
+
+	// The generic processor interface carries everything the panel needs
+	// (ROM folder, output gain, device status/reboot).
+	auto* const proc = dynamic_cast<pluginLib::Processor*>(&processor);
+	if(!proc)
+		return;
+
+	// The panel is a plain overlay: creating and closing it never touches the
+	// emulator, the RmlUi document or any synth state. The close callback can
+	// run from a deferred message, so it must survive this window being
+	// destroyed in the meantime.
+	const juce::Component::SafePointer<EditorWindow> safeThis(this);
+	m_iosControlPanel = std::make_unique<IosControlPanel>(m_state, *proc,
+		[safeThis]
+		{
+			if(safeThis != nullptr)
+				safeThis->closeIosControlPanel();
+		});
+	m_iosControlPanel->setAlwaysOnTop(true);
+	addAndMakeVisible(*m_iosControlPanel);
+	m_iosControlPanel->setBounds(getLocalBounds());
+	m_iosControlPanel->toFront(true);
+}
+
+void EditorWindow::closeIosControlPanel()
+{
+	m_iosControlPanel.reset();
 }
 #endif
 

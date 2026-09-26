@@ -7,6 +7,8 @@
 
 #include "mdProductSkins.h"
 
+#include "mdLib/mdromloader.h"
+
 #include "juce_events/juce_events.h"
 #include "jucePluginEditorLib/rendererPreferenceKeys.h"
 #include "juceRmlUi/rmlMenu.h"
@@ -129,5 +131,53 @@ namespace mdJucePlugin
 						editor->chooseUserSysexFile();
 				});
 			});
+	}
+
+	namespace
+	{
+		// The fingerprint checks accept exactly one known-good image per model,
+		// so a passing file's firmware version is a fact, not a guess.
+		const char* expectedFirmwareName(const md::MachineModel _model)
+		{
+			return _model == md::MachineModel::Monomachine
+				? "Monomachine OS 1.32b"
+				: "Machinedrum OS 1.63";
+		}
+	}
+
+	jucePluginEditorLib::PluginEditorState::RomImportResult PluginEditorState::validateRomFile(const std::string& _path)
+	{
+		const auto& processor = static_cast<AudioPluginAudioProcessor&>(m_processor);
+		const auto model = processor.getModel();
+
+		// Existing validation path only: md::Rom performs the exact-size load,
+		// md::RomLoader::isRomForModel the firmware fingerprint check. This is
+		// the same code the device's ROM discovery uses - nothing duplicated.
+		const md::Rom rom(_path);
+		if(!rom.isValid())
+			return { false, "Not a valid firmware image: an exact 8 MB .bin file is required." };
+
+		if(!md::RomLoader::isRomForModel(rom.data(), model))
+			return { false, std::string("This file is not the supported ")
+				+ expectedFirmwareName(model) + " firmware image." };
+
+		return { true, std::string("Validated: ") + expectedFirmwareName(model) + "." };
+	}
+
+	std::string PluginEditorState::getRomStatusText()
+	{
+		const auto& processor = static_cast<AudioPluginAudioProcessor&>(m_processor);
+		const auto model = processor.getModel();
+
+		if(m_processor.isPluginValid())
+			return std::string("Firmware loaded: ") + expectedFirmwareName(model) + ".";
+
+		const auto rom = md::RomLoader::findROM(model);
+		if(rom.isValid())
+			return std::string("Firmware found (") + rom.getFilename()
+				+ ") but the device is not running.";
+
+		return std::string("No firmware installed. Import the ")
+			+ expectedFirmwareName(model) + " 8 MB .bin image.";
 	}
 }

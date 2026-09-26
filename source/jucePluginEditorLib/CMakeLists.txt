@@ -6,6 +6,7 @@ set(SOURCES
 	fileChooserFlow.h
 	rendererPreferenceKeys.h
 	focusedParameter.cpp focusedParameter.h
+	iosControlPanel.cpp iosControlPanel.h
 	focusedParameterTooltip.cpp focusedParameterTooltip.h
 	lcd.cpp lcd.h
 	led.cpp led.h

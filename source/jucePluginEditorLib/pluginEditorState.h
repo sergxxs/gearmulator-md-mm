@@ -95,6 +95,20 @@ namespace jucePluginEditorLib
 		void enableDspBridge(bool _enable);
 		bridgeClient::ServerList* getRemoteServerList() const { return m_remoteServerList.get(); }
 
+		// --- firmware/ROM hooks for the iOS control panel ---------------------
+		// Only invoked by the iOS-only control panel; inert on desktop builds.
+		struct RomImportResult
+		{
+			bool valid = false;
+			std::string message;
+		};
+		// Validates a firmware image candidate through the product's existing
+		// ROM validation. The default has no product validator and rejects.
+		virtual RomImportResult validateRomFile(const std::string& _path);
+		// Human-readable firmware/device status line.
+		virtual std::string getRomStatusText();
+
+
 	protected:
 		virtual Editor* createEditor(const Skin& _skin) = 0;
 

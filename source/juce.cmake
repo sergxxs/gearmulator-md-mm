@@ -124,7 +124,19 @@ endmacro()
 
 macro(createJucePlugin targetName productName isSynth plugin4CC binaryDataProject synthLibProject)
 	string(REPLACE " " "" productNameIdentifier "${productName}")
+
+	# iOS: firmware images are installed by the user, either through the in-app
+	# document picker or by copying them into the app's Documents folder with
+	# the Files app. Both plist keys make that folder user-visible/writable.
+	# The variable stays empty on every other platform (no plist change).
+	set(iosPlistArgs)
+	if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+		set(iosPlistArgs PLIST_TO_MERGE
+			"<plist version=\"1.0\"><dict><key>UIFileSharingEnabled</key><true/><key>LSSupportsOpeningDocumentsInPlace</key><true/></dict></plist>")
+	endif()
+
 	juce_add_plugin(${targetName}
+		${iosPlistArgs}
 		# VERSION ...                                     # Set this if the plugin version is different to the project version
 		# ICON_BIG ...                                    # ICON_* arguments specify a path to an image file to use as an icon for the Standalone
 		# ICON_SMALL ...

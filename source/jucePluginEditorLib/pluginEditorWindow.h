@@ -8,6 +8,9 @@
 namespace jucePluginEditorLib
 {
 	class PluginEditorState;
+#if JUCE_IOS
+	class IosControlPanel;
+#endif
 
 	//==============================================================================
 	class EditorWindow : public juce::AudioProcessorEditor, juce::Timer
@@ -43,6 +46,11 @@ namespace jucePluginEditorLib
 		// Aspect-fits and centers the UI root inside the current, safe-area
 		// reduced viewport. iOS only; desktop sizing is driven by the GUI scale.
 		void layoutUiRootFitViewport();
+
+		// iOS-only application control panel (firmware import, volume,
+		// settings access, about) plus the button that opens it.
+		void openIosControlPanel();
+		void closeIosControlPanel();
 #endif
 
 		void timerCallback() override;
@@ -55,6 +63,11 @@ namespace jucePluginEditorLib
 
 	    juce::ComponentBoundsConstrainer m_sizeConstrainer;
 		EditorWindowScaleRestore m_scaleRestore;
+
+#if JUCE_IOS
+		std::unique_ptr<juce::TextButton> m_iosMenuButton;
+		std::unique_ptr<IosControlPanel> m_iosControlPanel;
+#endif
 
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EditorWindow)
 	};

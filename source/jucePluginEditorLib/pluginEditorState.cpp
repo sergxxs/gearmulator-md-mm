@@ -314,6 +314,20 @@ Editor* PluginEditorState::getEditor() const
 	return m_editor.get();
 }
 
+PluginEditorState::RomImportResult PluginEditorState::validateRomFile(const std::string&)
+{
+	// Products with firmware validation override this (see mdPluginEditorState);
+	// without a product validator no import is accepted.
+	return { false, "Firmware import is not supported for this product." };
+}
+
+std::string PluginEditorState::getRomStatusText()
+{
+	return m_processor.isPluginValid()
+		? "Device is running."
+		: "No valid firmware found - the device is not running.";
+}
+
 void PluginEditorState::enableDspBridge(const bool _enable)
 {
 	if (_enable && !m_remoteServerList)
