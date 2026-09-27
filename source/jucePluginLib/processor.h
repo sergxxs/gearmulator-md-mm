@@ -3,8 +3,10 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <atomic>
+#include <deque>
 #include <mutex>
 
+#include "audioRecorder.h"
 #include "bypassBuffer.h"
 #include "controller.h"
 #include "midiLearnTranslator.h"
@@ -141,6 +143,22 @@ namespace pluginLib
 		{
 			m_outputGain.store(_gain, std::memory_order_relaxed);
 		}
+
+		// --- incoming SysEx capture (SysEx library "Receive") ----------------
+		// Message-thread only: fed by the controller's realtime-queue drain
+		// (Controller::parseMidiMessage), consumed by the UI. Complete
+		// messages only - assembly/framing is done by the existing backends
+		// (JUCE MidiDataConcatenator for physical input, the device event
+		// model for emulator output). No locks, no realtime involvement.
+		void setSysexCaptureEnabled(bool _enabled);
+		bool isSysexCaptureEnabled() const { return m_sysexCaptureEnabled; }
+		void captureIncomingSysex(const synthLib::SysexBuffer& _sysex);
+		bool fetchCapturedSysex(synthLib::SysexBuffer& _out);
+		uint32_t getCapturedSysexDropCount() const { return m_capturedSysexDrops; }
+
+		// Final-output WAV recorder (fed from processBlock; dormant unless
+		// started - one relaxed atomic check per block when idle).
+		AudioRecorder& getAudioRecorder() { return m_audioRecorder; }
 		
 		bool setDspClockPercent(uint32_t _percent = 100);
 		uint32_t getDspClockPercent() const;
@@ -248,6 +266,15 @@ namespace pluginLib
 		synthLib::DeviceError m_deviceError = synthLib::DeviceError::None;
 		std::unique_ptr<synthLib::Device> m_device;
 		std::unique_ptr<synthLib::Plugin> m_plugin;
+
+	private:
+		// SysEx capture state; accessed on the message thread only.
+		bool m_sysexCaptureEnabled = false;
+		std::deque<synthLib::SysexBuffer> m_capturedSysex;
+		size_t m_capturedSysexBytes = 0;
+		uint32_t m_capturedSysexDrops = 0;
+
+		AudioRecorder m_audioRecorder;
 		std::vector<synthLib::SMidiEvent> m_midiOut;
 
 	private:

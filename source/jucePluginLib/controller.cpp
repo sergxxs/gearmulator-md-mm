@@ -596,6 +596,9 @@ namespace pluginLib
 	{
 		if(_e.sysex.empty())
 			return parseControllerMessage(_e);
+		// Tee for the SysEx library's Receive capture (message thread; a
+		// cheap flag check when disabled). Normal parsing is unaffected.
+		m_processor.captureIncomingSysex(_e.sysex);
 		return parseSysexMessage(_e.sysex, _e.source);
 	}
 

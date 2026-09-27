@@ -94,6 +94,54 @@ namespace pluginLib
 			m_midiPorts.send(_ev);
 	}
 
+	namespace
+	{
+		// Generous bounds for the SysEx receive capture: complete Elektron
+		// dumps are in the hundreds-of-kilobytes range, so 2 MiB per message
+		// leaves a wide margin while still bounding malformed/abusive input;
+		// 8 MiB of buffered messages covers a long unattended receive session.
+		constexpr size_t g_sysexCaptureMaxMessageBytes = 2 * 1024 * 1024;
+		constexpr size_t g_sysexCaptureMaxBufferedBytes = 8 * 1024 * 1024;
+	}
+
+	void Processor::setSysexCaptureEnabled(const bool _enabled)
+	{
+		m_sysexCaptureEnabled = _enabled;
+		if(_enabled)
+			return;
+		m_capturedSysex.clear();
+		m_capturedSysexBytes = 0;
+		m_capturedSysexDrops = 0;
+	}
+
+	void Processor::captureIncomingSysex(const synthLib::SysexBuffer& _sysex)
+	{
+		if(!m_sysexCaptureEnabled || _sysex.empty())
+			return;
+
+		if(_sysex.size() > g_sysexCaptureMaxMessageBytes
+			|| m_capturedSysexBytes + _sysex.size() > g_sysexCaptureMaxBufferedBytes)
+		{
+			// Never drop already-captured messages; oversized/overflowing
+			// input is counted and reported by the UI instead.
+			++m_capturedSysexDrops;
+			return;
+		}
+
+		m_capturedSysex.push_back(_sysex);
+		m_capturedSysexBytes += _sysex.size();
+	}
+
+	bool Processor::fetchCapturedSysex(synthLib::SysexBuffer& _out)
+	{
+		if(m_capturedSysex.empty())
+			return false;
+		_out = std::move(m_capturedSysex.front());
+		m_capturedSysex.pop_front();
+		m_capturedSysexBytes -= _out.size();
+		return true;
+	}
+
 	bool Processor::tryAddRealtimeMidiEvent(const synthLib::SMidiEvent& _ev)
 	{
 		// Physical output is attempted first: once queued, insertion into the local
@@ -900,6 +948,12 @@ namespace pluginLib
 		getPlugin().process(inputs, outputs, numSamples, bpm, ppqPos, isPlaying, ppqKnown);
 
 		applyOutputGain(outputs, numSamples);
+
+		// Final-output tap for the WAV recorder: the post-gain main stereo
+		// pair, exactly what reaches the device output. One relaxed atomic
+		// load when idle; while recording, a bounded interleave-copy into a
+		// preallocated lock-free FIFO (see audioRecorder.h). Never waits.
+		m_audioRecorder.processAudio(outputs[0], outputs[1], static_cast<size_t>(numSamples));
 
 		m_midiOut.clear();
 		getPlugin().getMidiOut(m_midiOut);

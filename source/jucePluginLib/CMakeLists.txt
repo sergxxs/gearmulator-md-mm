@@ -19,6 +19,7 @@ set(SOURCES
 	midiLearnPreset.cpp midiLearnPreset.h
 	midiLearnTranslator.cpp midiLearnTranslator.h
 	midipacket.cpp midipacket.h
+	audioRecorder.cpp audioRecorder.h
 	midiports.cpp midiports.h
 	parameter.cpp parameter.h
 	parameterdescription.cpp parameterdescription.h
