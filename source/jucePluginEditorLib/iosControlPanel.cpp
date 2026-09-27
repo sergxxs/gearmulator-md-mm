@@ -98,7 +98,10 @@ namespace jucePluginEditorLib
 			auto text = juce::String::fromUTF8(props.name.c_str())
 				+ " - " + juce::String::fromUTF8(props.vendor.c_str());
 			// Standalone-only, safe: reports the version the app was built with.
-			if(const auto* app = juce::JUCEApplicationBase::getInstance())
+			// JUCEApplicationBase::getInstance() returns a non-const pointer, and
+			// getApplicationVersion() is declared non-const (JUCE 7.0.10) - only the
+			// returned juce::String is const. Do not add const to app here.
+			if(auto* app = juce::JUCEApplicationBase::getInstance())
 			{
 				const auto version = app->getApplicationVersion();
 				if(version.isNotEmpty())
