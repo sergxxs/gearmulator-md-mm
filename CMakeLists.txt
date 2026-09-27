@@ -110,7 +110,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
 			if(_applied EQUAL 0)
 				message(STATUS "iOS patch already applied: ${_patch}")
 			else()
-				message(FATAL_ERROR "iOS patch ${_patch} neither applies nor is applied; check the state of ${_dir}")
+				message(FATAL_ERROR "iOS patch ${_patch} neither applies nor is applied. "
+					"The working tree in ${_dir} has local modifications; discard them with\n"
+					"  git -C \"${_dir}\" checkout -- .\n"
+					"and re-run the build so the patch can be applied cleanly.")
 			endif()
 		endif()
 	endfunction()
@@ -120,10 +123,36 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
 	gearmulator_apply_ios_patch(
 		"${CMAKE_CURRENT_SOURCE_DIR}/patches/asmjit-ios-icache.patch"
 		"${CMAKE_CURRENT_SOURCE_DIR}/source/dsp56300/source/asmjit")
+
+	# The overlays live in submodule working trees, so a later
+	# `git submodule update` (manual, IDE- or pull-triggered) silently undoes
+	# them after configuration, and a plain `cmake --build` then compiles the
+	# pristine sources again. Re-assert both patches at build time, before the
+	# patched libraries compile, so the build command alone is always
+	# sufficient. The script is idempotent and fails loudly on any other state.
+	add_custom_target(gearmulatorIosOverlayPatches
+		COMMAND "${CMAKE_COMMAND}"
+			"-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
+			"-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/patches/dsp56300-ios-cowmemory.patch"
+			"-DWORK_DIR=${CMAKE_CURRENT_SOURCE_DIR}/source/dsp56300"
+			-P "${CMAKE_CURRENT_SOURCE_DIR}/patches/applyIosPatch.cmake"
+		COMMAND "${CMAKE_COMMAND}"
+			"-DGIT_EXECUTABLE=${GIT_EXECUTABLE}"
+			"-DPATCH_FILE=${CMAKE_CURRENT_SOURCE_DIR}/patches/asmjit-ios-icache.patch"
+			"-DWORK_DIR=${CMAKE_CURRENT_SOURCE_DIR}/source/dsp56300/source/asmjit"
+			-P "${CMAKE_CURRENT_SOURCE_DIR}/patches/applyIosPatch.cmake"
+		COMMENT "Verifying iOS overlay patches (dsp56300 COW memory, asmjit icache)"
+		VERBATIM)
 endif()
 
 add_subdirectory(source)
 add_subdirectory(doc)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+	# Ensure the overlay verification runs before the patched sources compile.
+	add_dependencies(dsp56kBase gearmulatorIosOverlayPatches)
+	add_dependencies(asmjit gearmulatorIosOverlayPatches)
+endif()
 
 # ----------------- CPack parameters based on source
 
