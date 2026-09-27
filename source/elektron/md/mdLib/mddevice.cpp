@@ -69,7 +69,14 @@ namespace
 		if(filename.empty() || !baseLib::filesystem::readFile(cache, filename))
 			return {};
 
-		md::Rom rom;
+		// Never default-construct md::Rom here: RomData<Size>::RomData() resolves via the
+		// generic synthLib::findROM(), which searches getModulePath()/getCurrentDirectory()
+		// with no awareness of the target model or of a sandboxed iOS app container. Firmware
+		// selection must only ever go through the model-aware, sandbox-safe
+		// md::RomLoader::findROM(_model) fallback below. Rom(const std::string&) with an
+		// empty filename performs no file I/O and no search; it just yields a safely-invalid
+		// Rom that falls through to that fallback exactly like an unset default would.
+		md::Rom rom{std::string()};
 		if(!_params.romData.empty())
 		{
 			md::Rom supplied(_params.romData, _params.romName);

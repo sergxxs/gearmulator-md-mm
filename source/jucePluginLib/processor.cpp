@@ -670,6 +670,16 @@ namespace pluginLib
 		// initialisation that you need
 		m_hostSamplerate = static_cast<float>(sampleRate);
 
+		// One-shot diagnostic, logged only when the host (re)configures the audio
+		// device - never from processBlock/the realtime callback - so the actual
+		// sample rate/buffer size/channel count the OS handed us (which on iOS is
+		// whatever CoreAudio/AVAudioSession negotiated, not necessarily 512) is
+		// visible without adding any per-callback logging cost.
+		LOG("Audio device (re)configured: sampleRate=" << sampleRate
+			<< " bufferSize=" << samplesPerBlock
+			<< " inputChannels=" << getTotalNumInputChannels()
+			<< " outputChannels=" << getTotalNumOutputChannels());
+
 		getPlugin().setHostSamplerate(static_cast<float>(sampleRate), m_preferredDeviceSamplerate);
 		getPlugin().setBlockSize(samplesPerBlock);
 		getPlugin().reserveMidiEventCapacity(
