@@ -44,10 +44,10 @@ set(SOURCES
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-	# iOS standalone: save the session state when the app resigns active. The
-	# desktop close-button save path never runs on iOS. Compiled only here so
-	# desktop builds contain no Objective-C++.
-	list(APPEND SOURCES mdIosStateSaver.mm mdIosStateSaver.h)
+	# mdIosStateSaver.h only declares installIosBackgroundStateSaver() (no JUCE
+	# includes), so it is safe to make visible to every target that already
+	# includes it (mdPluginProcessor.cpp, part of the shared-code target).
+	list(APPEND SOURCES mdIosStateSaver.h)
 endif()
 
 set(COMMON_ASSETS
@@ -77,6 +77,32 @@ juce_add_binary_data(mmJucePlugin_BinaryData SOURCES
 
 createJucePlugin(mdJucePlugin "Gearmulator MD" TRUE "Tmdr" mdJucePlugin_BinaryData mdLib)
 createJucePlugin(mmJucePlugin "Gearmulator MM" TRUE "Tmno" mmJucePlugin_BinaryData mdLib)
+
+# iOS background-state saving (mdIosStateSaver.mm) calls juce::StandalonePluginHolder,
+# which is declared in juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h.
+# That header is an implementation detail of the juce_audio_plugin_client module: it is
+# only ever meant to be compiled as part of a JUCE-generated per-format plugin-client
+# wrapper target (here, "<target>_Standalone", linked against juce::juce_audio_plugin_client_Standalone),
+# never as part of our own shared-code target ("<target>", which intentionally does not
+# link juce_audio_plugin_client at all - see removeJuceDependencies() above). Compiling
+# it into the shared-code target instead, as SOURCES did previously, drops every module
+# juce_audio_plugin_client depends on (juce_audio_devices, juce_gui_extra, juce_audio_utils)
+# from this translation unit, which is why the compiler reports AudioIODeviceCallback,
+# AudioDeviceManager, AudioProcessorPlayer, MidiDeviceInfo etc. as unknown while parsing
+# juce_StandaloneFilterWindow.h. Attach the file to the Standalone wrapper target instead,
+# matching how JUCE compiles its own juce_audio_plugin_client_Standalone.cpp.
+# The Standalone format is the only one ever enabled for iOS builds (see the ios-mm
+# CMake preset), so mdPluginProcessor.cpp's call to installIosBackgroundStateSaver()
+# (itself guarded by JUCE_IOS and isStandaloneApp()) always resolves inside the final
+# Standalone executable link. If another iOS plugin format is ever enabled, its wrapper
+# target needs the same target_sources() call added below.
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+	foreach(plugin_target mdJucePlugin mmJucePlugin)
+		if(TARGET ${plugin_target}_Standalone)
+			target_sources(${plugin_target}_Standalone PRIVATE mdIosStateSaver.mm mdIosStateSaver.h)
+		endif()
+	endforeach()
+endif()
 
 # MD/MM expose an optional stereo input to plug-in hosts. Starting the
 # standalone with that input active makes CoreAudio combine the built-in input
