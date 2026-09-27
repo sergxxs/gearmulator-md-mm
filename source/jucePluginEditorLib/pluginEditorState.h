@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include <juce_core/juce_core.h>
+
 #include "baseLib/event.h"
 
 #include "client/serverList.h"
@@ -107,6 +109,67 @@ namespace jucePluginEditorLib
 		virtual RomImportResult validateRomFile(const std::string& _path);
 		// Human-readable firmware/device status line.
 		virtual std::string getRomStatusText();
+		// Multi-line firmware details for the control panel's firmware
+		// manager: device state, the ROM image the existing loader currently
+		// discovers, size/validity. Only real loader/processor state - no
+		// invented fields.
+		virtual std::string getFirmwareDetailsText();
+
+		// --- diagnostics hooks for the iOS control panel ---------------------
+		// Only invoked by the iOS-only control panel; inert on desktop builds.
+		// Products with performance diagnostics (see mdPluginEditorState)
+		// forward to their existing implementation - nothing is duplicated.
+		virtual bool isPerformanceCaptureActive() { return false; }
+		virtual void setPerformanceCaptureActive(bool) {}
+		virtual std::string getPerformanceStatusText() { return "Performance capture is not supported for this product."; }
+		virtual juce::File getDiagnosticsLogsFolder() { return {}; }
+
+		// --- user SysEx library hooks for the iOS control panel --------------
+		// The library folder is generic (filesystem is the source of truth);
+		// transfer control forwards to the product's existing SysEx transfer
+		// implementation - no second parser or transport exists.
+		virtual juce::File getSysexLibraryFolder();
+		virtual bool sendSysexFile(const juce::File&) { return false; }
+		virtual std::string getSysexTransferStatusText() { return {}; }
+		virtual bool isSysexTransferActive() { return false; }
+		virtual bool canCancelSysexTransfer() { return false; }
+		virtual void cancelSysexTransfer() {}
+		virtual bool canResumeSysexTransfer() { return false; }
+		virtual void resumeSysexTransfer() {}
+
+		// --- WAV recording playback hooks (iOS control panel) ----------------
+		// Forwarded to the product's standalone playback helper, which mixes
+		// through the existing AudioDeviceManager as a second callback - the
+		// synth audio path is untouched. Inert defaults for plugin builds.
+		struct PlaybackStatus
+		{
+			bool available = false;
+			bool playing = false;
+			double positionSeconds = 0.0;
+			double lengthSeconds = 0.0;
+		};
+		virtual bool playRecording(const juce::File&, std::string& _error)
+		{
+			_error = "Playback is not available in this build.";
+			return false;
+		}
+		virtual void stopRecordingPlayback() {}
+		virtual PlaybackStatus getRecordingPlaybackStatus() { return {}; }
+
+		// Live metrics/warnings from the existing realtime instrumentation
+		// snapshot (lock-free counters read on the message thread; never
+		// touches the plugin lock and never serializes device state).
+		std::string getRealtimeMetricsText();
+		std::string getRealtimeWarningsText();
+
+		// Existing 'refreshRateLimitHz' config key; read once at editor
+		// creation, so a change applies after an app restart. -1 = default.
+		int getFpsLimitConfig() const;
+		void setFpsLimitConfig(int _hz);
+
+		// Clears only the application's settings file. ROM images, logs,
+		// diagnostics and other data folders are untouched.
+		void resetApplicationSettings();
 
 
 	protected:

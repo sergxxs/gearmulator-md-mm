@@ -35,16 +35,54 @@ EditorWindow::EditorWindow(juce::AudioProcessor& _p, PluginEditorState& _s, juce
 	addMouseListener(this, true);
 
 #if JUCE_IOS
-	// iOS-only application control panel entry: a small always-visible button.
-	// There is no menu bar and no right-click on iOS; this is the one obvious,
-	// touch-reachable entry point. It sits in the safe-area top-right corner
-	// (in the letterbox area when one exists) and never captures touches
-	// outside its own small bounds, so the synth UI stays fully operable.
-	m_iosMenuButton = std::make_unique<juce::TextButton>(juce::CharPointer_UTF8("\xe2\x80\xa2\xe2\x80\xa2\xe2\x80\xa2"));
-	m_iosMenuButton->setAlpha(0.8f);
-	m_iosMenuButton->onClick = [this] { openIosControlPanel(); };
-	m_iosMenuButton->setAlwaysOnTop(true);
-	addAndMakeVisible(*m_iosMenuButton);
+	if(juce::SystemStats::getDeviceDescription().contains("iPad"))
+	{
+		// iPad-only quick bar: the 4:3 screen letterboxes the MM panel
+		// vertically (width-limited fit), so a top strip of large shortcut
+		// buttons costs no panel size at all. Every action is an existing
+		// one - the Control Panel (optionally scrolled to one of its real
+		// sections) or the existing settings dialog. No new subsystems.
+		const auto addQuick = [this](const char* _label, std::function<void()> _action)
+		{
+			auto button = std::make_unique<juce::TextButton>(_label);
+			button->onClick = std::move(_action);
+			button->setAlwaysOnTop(true);
+			addAndMakeVisible(*button);
+			m_ipadQuickButtons.emplace_back(std::move(button));
+		};
+
+		addQuick("MAIN", [this]
+		{
+			// Back to the instrument: close any overlay/dialog.
+			closeIosControlPanel();
+			if(auto* editor = m_state.getEditor())
+				editor->showSettings(false);
+		});
+		addQuick("PANEL", [this] { openIosControlPanel(); });
+		addQuick("FIRMWARE", [this] { openIosControlPanel("FIRMWARE"); });
+		addQuick("MIDI", [this]
+		{
+			// Existing settings dialog hosts the MIDI pages.
+			closeIosControlPanel();
+			if(auto* editor = m_state.getEditor())
+				editor->showSettings(true);
+		});
+		addQuick("PERFORM", [this] { openIosControlPanel("PERFORMANCE"); });
+		addQuick("DATA", [this] { openIosControlPanel("DATA"); });
+		addQuick("ABOUT", [this] { openIosControlPanel("ABOUT"); });
+	}
+	else
+	{
+		// iPhone: a small always-visible entry button. There is no menu bar
+		// and no right-click on iOS; this is the one obvious, touch-reachable
+		// entry point. It sits in the safe-area top-right corner and never
+		// captures touches outside its own small bounds.
+		m_iosMenuButton = std::make_unique<juce::TextButton>(juce::CharPointer_UTF8("\xe2\x80\xa2\xe2\x80\xa2\xe2\x80\xa2"));
+		m_iosMenuButton->setAlpha(0.8f);
+		m_iosMenuButton->onClick = [this] { openIosControlPanel(); };
+		m_iosMenuButton->setAlwaysOnTop(true);
+		addAndMakeVisible(*m_iosMenuButton);
+	}
 #endif
 
 	setUiRoot(m_state.getUiRoot());
@@ -184,6 +222,20 @@ void EditorWindow::setUiRoot(juce::Component* _component)
 	// desktop GUI scale and do not arm the delayed scale restore. The UI root
 	// is aspect-fitted and centered in layoutUiRootFitViewport() instead.
 	addAndMakeVisible(_component);
+
+	// iPhone only: render the RmlUi software frame at the native Retina
+	// density (existing setUseNativePixelDensity mechanism, driven by the
+	// paint context's physical pixel scale) instead of rendering at 1x
+	// logical resolution and letting UIKit upscale 3x - that upscale is what
+	// makes text/LCD/buttons look blurry. The iPad (A9) deliberately keeps
+	// the cheaper 1x path: 2x full-frame software rendering is too expensive
+	// there and the iPad layout/policy must not change in this pass. The
+	// audio path is unaffected either way (rendering runs on the message
+	// thread and shares no lock with the realtime callback).
+	if(juce::SystemStats::getDeviceDescription().contains("iPhone"))
+		if(auto* rml = dynamic_cast<juceRmlUi::RmlComponent*>(_component))
+			rml->setUseNativePixelDensity(true);
+
 	layoutUiRootFitViewport();
 	return;
 #endif
@@ -235,6 +287,23 @@ void EditorWindow::layoutUiRootFitViewport()
 	if(avail.isEmpty())
 		return;
 
+	// iPad quick bar: occupies the top strip of the safe area; the MM panel
+	// is aspect-fitted into the remaining rectangle below. On the 4:3 iPad
+	// the panel fit is width-limited, so the bar consumes only letterbox
+	// space and the panel scale is unchanged.
+	if(!m_ipadQuickButtons.empty())
+	{
+		auto bar = avail.removeFromTop(64).reduced(8, 8);
+		const auto count = static_cast<int>(m_ipadQuickButtons.size());
+		const auto buttonWidth = (bar.getWidth() - 8 * (count - 1)) / juce::jmax(1, count);
+		auto x = bar.getX();
+		for(const auto& button : m_ipadQuickButtons)
+		{
+			button->setBounds(x, bar.getY(), buttonWidth, bar.getHeight());
+			x += buttonWidth + 8;
+		}
+	}
+
 	// iOS overlays: keep the control-panel button in the safe-area top-right
 	// corner and the panel (when open) covering the whole editor. Positioned
 	// before the early-out below so they always track the viewport.
@@ -272,10 +341,16 @@ void EditorWindow::layoutUiRootFitViewport()
 	repaint();
 }
 
-void EditorWindow::openIosControlPanel()
+void EditorWindow::openIosControlPanel(const juce::String& _scrollToSection)
 {
 	if(m_iosControlPanel)
+	{
+		// Already open (e.g. another iPad quick button): just retarget.
+		m_iosControlPanel->toFront(true);
+		if(_scrollToSection.isNotEmpty())
+			m_iosControlPanel->scrollToSection(_scrollToSection);
 		return;
+	}
 
 	// The generic processor interface carries everything the panel needs
 	// (ROM folder, output gain, device status/reboot).
@@ -298,6 +373,9 @@ void EditorWindow::openIosControlPanel()
 	addAndMakeVisible(*m_iosControlPanel);
 	m_iosControlPanel->setBounds(getLocalBounds());
 	m_iosControlPanel->toFront(true);
+
+	if(_scrollToSection.isNotEmpty())
+		m_iosControlPanel->scrollToSection(_scrollToSection);
 }
 
 void EditorWindow::closeIosControlPanel()

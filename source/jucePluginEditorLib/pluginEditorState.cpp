@@ -328,6 +328,129 @@ std::string PluginEditorState::getRomStatusText()
 		: "No valid firmware found - the device is not running.";
 }
 
+std::string PluginEditorState::getFirmwareDetailsText()
+{
+	// Products with a firmware loader override this (see mdPluginEditorState).
+	return getRomStatusText();
+}
+
+juce::File PluginEditorState::getSysexLibraryFolder()
+{
+	// Persistent, Files-app visible (same data root as roms/, config/, logs/).
+	return juce::File(m_processor.getDataFolder()).getChildFile("sysex");
+}
+
+namespace
+{
+	uint64_t toMicroseconds(const uint64_t _nanoseconds)
+	{
+		return _nanoseconds / 1000u;
+	}
+}
+
+std::string PluginEditorState::getRealtimeMetricsText()
+{
+	const auto snapshot = m_processor.getPlugin().getRealtimeInstrumentation().snapshot();
+
+	if(!snapshot.enabled && snapshot.outerHostCallbackCount == 0)
+		return "Realtime instrumentation is off.\nStart a performance capture to collect metrics.";
+
+	const auto callbacks = snapshot.outerHostCallbackCount;
+	if(!callbacks)
+		return "Capturing - no callbacks measured yet.";
+
+	const auto sampleRate = m_processor.getSampleRate();
+	const auto blockSize = m_processor.getBlockSize();
+	const auto budgetUs = (sampleRate > 0.0 && blockSize > 0)
+		? static_cast<uint64_t>(1'000'000.0 * blockSize / sampleRate) : 0u;
+
+	std::string text = "Callbacks: " + std::to_string(callbacks);
+	if(budgetUs)
+		text += "  (" + std::to_string(blockSize) + " @ "
+			+ std::to_string(static_cast<int>(sampleRate)) + " Hz = "
+			+ std::to_string(budgetUs) + " us)";
+
+	text += "\nCallback avg/max: "
+		+ std::to_string(toMicroseconds(snapshot.outerHostCallbackNanoseconds / callbacks))
+		+ " / " + std::to_string(toMicroseconds(snapshot.outerHostCallbackMaxNanoseconds)) + " us";
+
+	if(const auto synthCalls = snapshot.synthProcessCount)
+	{
+		text += "\nDSP avg/max: "
+			+ std::to_string(toMicroseconds(snapshot.synthProcessNanoseconds / synthCalls))
+			+ " / " + std::to_string(toMicroseconds(snapshot.synthProcessMaxNanoseconds)) + " us";
+		text += "\nLock wait avg/max: "
+			+ std::to_string(toMicroseconds(snapshot.synthProcessLockWaitNanoseconds / synthCalls))
+			+ " / " + std::to_string(toMicroseconds(snapshot.synthProcessLockWaitMaxNanoseconds)) + " us";
+	}
+
+	text += "\nDeadline overruns: " + std::to_string(snapshot.outerHostCallbackOverrunCount);
+	if(snapshot.outerHostCallbackOverrunCount)
+		text += " (max +" + std::to_string(toMicroseconds(snapshot.outerHostCallbackMaxOverrunNanoseconds)) + " us)";
+
+	return text;
+}
+
+std::string PluginEditorState::getRealtimeWarningsText()
+{
+	const auto snapshot = m_processor.getPlugin().getRealtimeInstrumentation().snapshot();
+	const auto callbacks = snapshot.outerHostCallbackCount;
+
+	const auto sampleRate = m_processor.getSampleRate();
+	const auto blockSize = m_processor.getBlockSize();
+	const auto budgetNs = (sampleRate > 0.0 && blockSize > 0)
+		? static_cast<uint64_t>(1'000'000'000.0 * blockSize / sampleRate) : 0u;
+
+	if(!callbacks || !budgetNs)
+		return {};
+
+	// Thresholds are derived from the actual block duration and from the
+	// instrumentation's own deadline comparison - not arbitrary constants.
+	std::string warnings;
+	const auto append = [&warnings](const std::string& _line)
+	{
+		if(!warnings.empty())
+			warnings += '\n';
+		warnings += _line;
+	};
+
+	if(snapshot.outerHostCallbackOverrunCount)
+		append("AUDIO CALLBACK DELAY: the audio callback exceeded its deadline "
+			+ std::to_string(snapshot.outerHostCallbackOverrunCount) + " time(s).");
+
+	if(snapshot.outerHostCallbackNanoseconds / callbacks > budgetNs * 7u / 10u)
+		append("HIGH AUDIO LOAD: audio processing is close to the realtime limit.");
+
+	if(snapshot.synthProcessLockWaitMaxNanoseconds > budgetNs / 10u)
+		append("LOCK CONTENTION: realtime audio waited up to "
+			+ std::to_string(snapshot.synthProcessLockWaitMaxNanoseconds / 1000u)
+			+ " us for a shared lock.");
+
+	return warnings;
+}
+
+int PluginEditorState::getFpsLimitConfig() const
+{
+	return m_processor.getConfig().getIntValue("refreshRateLimitHz", -1);
+}
+
+void PluginEditorState::setFpsLimitConfig(const int _hz)
+{
+	auto& config = m_processor.getConfig();
+	config.setValue("refreshRateLimitHz", _hz);
+	config.saveIfNeeded();
+}
+
+void PluginEditorState::resetApplicationSettings()
+{
+	// The settings PropertiesFile contains only application preferences; ROM
+	// images, diagnostics logs and session data live in separate folders and
+	// are deliberately not touched here.
+	auto& config = m_processor.getConfig();
+	config.clear();
+	config.saveIfNeeded();
+}
+
 void PluginEditorState::enableDspBridge(const bool _enable)
 {
 	if (_enable && !m_remoteServerList)

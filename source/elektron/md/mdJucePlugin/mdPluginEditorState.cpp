@@ -6,6 +6,7 @@
 #include "mdStandaloneRendererPolicy.h"
 
 #include "mdProductSkins.h"
+#include "mdRecordingsPlayer.h"
 
 #include "mdLib/mdromloader.h"
 
@@ -179,5 +180,140 @@ namespace mdJucePlugin
 
 		return std::string("No firmware installed. Import the ")
 			+ expectedFirmwareName(model) + " 8 MB .bin image.";
+	}
+
+	std::string PluginEditorState::getFirmwareDetailsText()
+	{
+		const auto& processor = static_cast<AudioPluginAudioProcessor&>(m_processor);
+		const auto model = processor.getModel();
+
+		// Real state only: device validity from the processor, the discovered
+		// image from the same md::RomLoader search the device boots with.
+		std::string text = m_processor.isPluginValid()
+			? std::string("Device: running - ") + expectedFirmwareName(model)
+			: "Device: not running";
+
+		const auto rom = md::RomLoader::findROM(model);
+		if(rom.isValid())
+		{
+			auto name = rom.getFilename();
+			if(const auto slash = name.find_last_of("/\\"); slash != std::string::npos)
+				name = name.substr(slash + 1);
+			text += "\nROM in folder: " + name;
+			text += "\nSize: 8 MiB - valid ";
+			text += expectedFirmwareName(model);
+			text += " image";
+			if(!m_processor.isPluginValid())
+				text += "\nTap 'Reload device' to activate it.";
+		}
+		else
+		{
+			text += "\nROM in folder: none found";
+		}
+
+		return text;
+	}
+
+	namespace
+	{
+		Editor* mdEditorOf(jucePluginEditorLib::Editor* _editor)
+		{
+			return dynamic_cast<Editor*>(_editor);
+		}
+	}
+
+	bool PluginEditorState::sendSysexFile(const juce::File& _file)
+	{
+		auto* const editor = mdEditorOf(getEditor());
+		return editor && editor->sendUserSysexFromFile(_file);
+	}
+
+	std::string PluginEditorState::getSysexTransferStatusText()
+	{
+		auto* const editor = mdEditorOf(getEditor());
+		return editor ? editor->getUserSysexMenuText() : std::string{};
+	}
+
+	bool PluginEditorState::isSysexTransferActive()
+	{
+		auto* const editor = mdEditorOf(getEditor());
+		return editor && editor->isUserSysexTransferActive();
+	}
+
+	bool PluginEditorState::canCancelSysexTransfer()
+	{
+		auto* const editor = mdEditorOf(getEditor());
+		return editor && editor->canCancelUserSysexTransfer();
+	}
+
+	void PluginEditorState::cancelSysexTransfer()
+	{
+		if(auto* const editor = mdEditorOf(getEditor()))
+			editor->cancelUserSysexTransfer();
+	}
+
+	bool PluginEditorState::canResumeSysexTransfer()
+	{
+		auto* const editor = mdEditorOf(getEditor());
+		return editor && editor->canResumeUserSysexTransfer();
+	}
+
+	void PluginEditorState::resumeSysexTransfer()
+	{
+		if(auto* const editor = mdEditorOf(getEditor()))
+			editor->resumeUserSysexTransfer();
+	}
+
+	bool PluginEditorState::playRecording(const juce::File& _file, std::string& _error)
+	{
+		if(!juce::JUCEApplicationBase::isStandaloneApp())
+		{
+			_error = "Playback is only available in the standalone app.";
+			return false;
+		}
+		juce::String error;
+		if(RecordingsPlayer::instance().play(_file, error))
+			return true;
+		_error = error.toStdString();
+		return false;
+	}
+
+	void PluginEditorState::stopRecordingPlayback()
+	{
+		if(juce::JUCEApplicationBase::isStandaloneApp())
+			RecordingsPlayer::instance().stop();
+	}
+
+	jucePluginEditorLib::PluginEditorState::PlaybackStatus PluginEditorState::getRecordingPlaybackStatus()
+	{
+		PlaybackStatus status;
+		if(!juce::JUCEApplicationBase::isStandaloneApp())
+			return status;
+		const auto s = RecordingsPlayer::instance().getStatus();
+		status.available = true;
+		status.playing = s.playing;
+		status.positionSeconds = s.positionSeconds;
+		status.lengthSeconds = s.lengthSeconds;
+		return status;
+	}
+
+	bool PluginEditorState::isPerformanceCaptureActive()
+	{
+		return static_cast<AudioPluginAudioProcessor&>(m_processor).performanceDiagnosticsActive();
+	}
+
+	void PluginEditorState::setPerformanceCaptureActive(const bool _active)
+	{
+		static_cast<AudioPluginAudioProcessor&>(m_processor).setPerformanceDiagnosticsEnabled(_active);
+	}
+
+	std::string PluginEditorState::getPerformanceStatusText()
+	{
+		return static_cast<AudioPluginAudioProcessor&>(m_processor).performanceDiagnosticsStatus();
+	}
+
+	juce::File PluginEditorState::getDiagnosticsLogsFolder()
+	{
+		return static_cast<AudioPluginAudioProcessor&>(m_processor).performanceDiagnosticsFolder();
 	}
 }

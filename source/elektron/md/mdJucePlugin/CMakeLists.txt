@@ -40,6 +40,7 @@ set(SOURCES
 	skins/mmSfx60/mmKnobs.rcss
 	skins/mmSfx60/mmSfx60.rcss
 	mdSettingsPanelFeel.cpp mdSettingsPanelFeel.h
+	mdRecordingsPlayer.cpp mdRecordingsPlayer.h
 	mdSettingsAudioInput.cpp mdSettingsAudioInput.h
 )
 

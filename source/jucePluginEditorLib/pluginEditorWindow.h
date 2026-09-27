@@ -2,6 +2,8 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <vector>
+
 #include "baseLib/event.h"
 #include "editorWindowScaleRestore.h"
 
@@ -48,8 +50,9 @@ namespace jucePluginEditorLib
 		void layoutUiRootFitViewport();
 
 		// iOS-only application control panel (firmware import, volume,
-		// settings access, about) plus the button that opens it.
-		void openIosControlPanel();
+		// settings access, about) plus the button that opens it. An optional
+		// section name scrolls the existing panel to that section (iPad bar).
+		void openIosControlPanel(const juce::String& _scrollToSection = {});
 		void closeIosControlPanel();
 #endif
 
@@ -67,6 +70,9 @@ namespace jucePluginEditorLib
 #if JUCE_IOS
 		std::unique_ptr<juce::TextButton> m_iosMenuButton;
 		std::unique_ptr<IosControlPanel> m_iosControlPanel;
+		// iPad-only quick bar: an additional shortcut layer into the existing
+		// Control Panel / settings dialog; empty on iPhone.
+		std::vector<std::unique_ptr<juce::TextButton>> m_ipadQuickButtons;
 #endif
 
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EditorWindow)

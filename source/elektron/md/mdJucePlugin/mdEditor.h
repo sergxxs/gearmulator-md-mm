@@ -78,6 +78,10 @@ namespace mdJucePlugin
 		void restorePreviousStorage();
 		bool hasStorageRecoveryImage() const;
 		void chooseUserSysexFile();
+		// Starts the existing user-SysEx transfer for an already known file
+		// (used by the iOS SysEx library). Same ticket/transfer machinery as
+		// chooseUserSysexFile(), without the file dialog.
+		bool sendUserSysexFromFile(const juce::File& _file);
 		void cancelUserSysexTransfer();
 		bool canResumeUserSysexTransfer() const;
 		void resumeUserSysexTransfer();

@@ -1532,6 +1532,30 @@ namespace mdJucePlugin
 		launchUserSysexFileChooser(*ticket);
 	}
 
+	bool Editor::sendUserSysexFromFile(const juce::File& _file)
+	{
+		if(isUserSysexTransferActive())
+		{
+			showUserSysexError("A SysEx file is already being sent.");
+			return false;
+		}
+
+		const auto ticket = getProcessor().getPlugin().withDeviceLocked(
+			[](synthLib::Device* base) -> std::optional<md::SysexImportTicket>
+			{
+				auto* device = dynamic_cast<md::Device*>(base);
+				return device ? device->beginUserSysexImport() : std::nullopt;
+			});
+		if(!ticket)
+		{
+			showUserSysexError("The machine is unavailable, restoring state, or already receiving a file. Try again when it is ready.");
+			return false;
+		}
+
+		sendUserSysexFile(_file, *ticket);
+		return true;
+	}
+
 	void Editor::launchUserSysexFileChooser(const md::SysexImportTicket& ticket)
 	{
 
