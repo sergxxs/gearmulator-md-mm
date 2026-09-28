@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <mutex>
 #include <atomic>
 #include <functional>
@@ -75,7 +76,26 @@ namespace synthLib
 		template<typename Callback>
 		decltype(auto) withDeviceLocked(Callback&& _callback) const
 		{
+			// Diagnostic only: this measures how long the CALLING thread (in
+			// practice the UI/message thread - the realtime audio callback
+			// never goes through this method) had to wait for the same
+			// recursive mutex that Plugin::process() holds for the entire
+			// duration of one host block, including the full device/DSP
+			// emulation. If that emulation overruns the realtime deadline,
+			// this wait time is expected to grow in lockstep, which is how a
+			// slow audio callback can starve the UI thread even though RmlUi
+			// itself is never touched. See realtimeInstrumentation's
+			// controlLockWait* fields in the performance report.
+			const auto instrument = m_realtimeInstrumentation.isEnabled();
+			const auto waitStart = instrument
+				? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
 			std::lock_guard lock(m_lock);
+			if(instrument)
+			{
+				const auto waitNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(
+					std::chrono::steady_clock::now() - waitStart).count();
+				m_realtimeInstrumentation.recordControlLockWait(static_cast<uint64_t>(waitNanoseconds));
+			}
 			return std::forward<Callback>(_callback)(m_device);
 		}
 
@@ -129,6 +149,9 @@ namespace synthLib
 		float m_deviceSamplerate = 0.0f;
 		CallbackDeviceInvalid m_callbackDeviceInvalid;
 		std::atomic<uint64_t> m_realtimeAllocationFallbackCount{0};
-		RealtimeInstrumentation m_realtimeInstrumentation;
+		// mutable: withDeviceLocked() is const (it only reads/dispatches
+		// through the device pointer) but still needs to record its lock-wait
+		// diagnostic; all recorded state is atomic, so this is race-free.
+		mutable RealtimeInstrumentation m_realtimeInstrumentation;
 	};
 }

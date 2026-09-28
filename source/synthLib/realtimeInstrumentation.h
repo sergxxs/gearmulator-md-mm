@@ -56,6 +56,15 @@ namespace synthLib
 		uint64_t synthProcessMaxNanoseconds = 0;
 		uint64_t synthProcessLockWaitNanoseconds = 0;
 		uint64_t synthProcessLockWaitMaxNanoseconds = 0;
+		// Time a non-realtime caller (e.g. the UI/message thread via
+		// Plugin::withDeviceLocked) spent waiting for the same device lock the
+		// realtime audio thread holds for the whole of Plugin::process(). A
+		// sustained rise here on the message thread, in step with realtime
+		// budget overruns, is the signature of UI starvation caused by lock
+		// contention with an overrunning audio callback (not a UI-side hang).
+		uint64_t controlLockWaitCount = 0;
+		uint64_t controlLockWaitNanoseconds = 0;
+		uint64_t controlLockWaitMaxNanoseconds = 0;
 		uint64_t resamplerCallCount = 0;
 		uint64_t resamplerNanoseconds = 0;
 		uint64_t resamplerMaxNanoseconds = 0;
@@ -159,6 +168,10 @@ namespace synthLib
 
 		void recordSynthProcess(uint64_t _nanoseconds) noexcept;
 		void recordSynthProcessLockWait(uint64_t _nanoseconds) noexcept;
+		// Called from Plugin::withDeviceLocked, i.e. from whatever thread asks
+		// for the device (normally the UI/message thread), never from the
+		// realtime audio callback itself.
+		void recordControlLockWait(uint64_t _nanoseconds) noexcept;
 		void recordResampler(uint64_t _nanoseconds, uint64_t _deviceNanoseconds,
 			size_t _hostFrames, bool _resamplingActive) noexcept;
 
@@ -213,6 +226,9 @@ namespace synthLib
 		std::atomic<uint64_t> m_synthProcessMaxNanoseconds{0};
 		std::atomic<uint64_t> m_synthProcessLockWaitNanoseconds{0};
 		std::atomic<uint64_t> m_synthProcessLockWaitMaxNanoseconds{0};
+		std::atomic<uint64_t> m_controlLockWaitCount{0};
+		std::atomic<uint64_t> m_controlLockWaitNanoseconds{0};
+		std::atomic<uint64_t> m_controlLockWaitMaxNanoseconds{0};
 		std::atomic<uint64_t> m_resamplerCallCount{0};
 		std::atomic<uint64_t> m_resamplerNanoseconds{0};
 		std::atomic<uint64_t> m_resamplerMaxNanoseconds{0};

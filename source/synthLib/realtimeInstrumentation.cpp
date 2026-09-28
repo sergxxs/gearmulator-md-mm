@@ -76,6 +76,9 @@ namespace synthLib
 		m_synthProcessMaxNanoseconds.store(0, std::memory_order_relaxed);
 		m_synthProcessLockWaitNanoseconds.store(0, std::memory_order_relaxed);
 		m_synthProcessLockWaitMaxNanoseconds.store(0, std::memory_order_relaxed);
+		m_controlLockWaitCount.store(0, std::memory_order_relaxed);
+		m_controlLockWaitNanoseconds.store(0, std::memory_order_relaxed);
+		m_controlLockWaitMaxNanoseconds.store(0, std::memory_order_relaxed);
 		m_resamplerCallCount.store(0, std::memory_order_relaxed);
 		m_resamplerNanoseconds.store(0, std::memory_order_relaxed);
 		m_resamplerMaxNanoseconds.store(0, std::memory_order_relaxed);
@@ -120,6 +123,9 @@ namespace synthLib
 		result.synthProcessMaxNanoseconds = m_synthProcessMaxNanoseconds.load(std::memory_order_relaxed);
 		result.synthProcessLockWaitNanoseconds = m_synthProcessLockWaitNanoseconds.load(std::memory_order_relaxed);
 		result.synthProcessLockWaitMaxNanoseconds = m_synthProcessLockWaitMaxNanoseconds.load(std::memory_order_relaxed);
+		result.controlLockWaitCount = m_controlLockWaitCount.load(std::memory_order_relaxed);
+		result.controlLockWaitNanoseconds = m_controlLockWaitNanoseconds.load(std::memory_order_relaxed);
+		result.controlLockWaitMaxNanoseconds = m_controlLockWaitMaxNanoseconds.load(std::memory_order_relaxed);
 		result.resamplerCallCount = m_resamplerCallCount.load(std::memory_order_relaxed);
 		result.resamplerNanoseconds = m_resamplerNanoseconds.load(std::memory_order_relaxed);
 		result.resamplerMaxNanoseconds = m_resamplerMaxNanoseconds.load(std::memory_order_relaxed);
@@ -412,6 +418,16 @@ namespace synthLib
 		if(g_callbackContext.owner == this) g_callbackContext.callback.lockWaitNanoseconds += _nanoseconds;
 		m_synthProcessLockWaitNanoseconds.fetch_add(_nanoseconds, std::memory_order_relaxed);
 		updateMaximum(m_synthProcessLockWaitMaxNanoseconds, _nanoseconds);
+	}
+
+	void RealtimeInstrumentation::recordControlLockWait(
+		const uint64_t _nanoseconds) noexcept
+	{
+		if(!isEnabled())
+			return;
+		m_controlLockWaitCount.fetch_add(1, std::memory_order_relaxed);
+		m_controlLockWaitNanoseconds.fetch_add(_nanoseconds, std::memory_order_relaxed);
+		updateMaximum(m_controlLockWaitMaxNanoseconds, _nanoseconds);
 	}
 
 	void RealtimeInstrumentation::recordResampler(const uint64_t _nanoseconds,
