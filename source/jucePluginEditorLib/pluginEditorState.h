@@ -108,6 +108,18 @@ namespace jucePluginEditorLib
 		// Human-readable firmware/device status line.
 		virtual std::string getRomStatusText();
 
+		// --- diagnostics hook for the iOS control panel ------------------------
+		// Only invoked by the iOS-only control panel; the default is inert on
+		// every product/platform. Currently overridden only for iOS Standalone
+		// MM (see mdJucePlugin::PluginEditorState), so this never appears for
+		// MD, other products, or other platforms.
+		// Cheap predicate used to decide whether to show the "Diagnostics"
+		// entry at all, without constructing the panel.
+		virtual bool hasDiagnosticsPanel() const { return false; }
+		// Builds the self-contained "Performance & Emulator Log" panel. Called
+		// once when the user opens it; _onClose is invoked by the panel when
+		// the user wants to return to the control panel.
+		virtual std::unique_ptr<juce::Component> createDiagnosticsPanel(std::function<void()> _onClose);
 
 	protected:
 		virtual Editor* createEditor(const Skin& _skin) = 0;

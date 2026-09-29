@@ -23,6 +23,7 @@ set(SOURCES
 	mdLcdViewport.h
 	mdPixelPerfectPanel.cpp mdPixelPerfectPanel.h
 	mdPanelAffordances.h
+	mdIosDiagnosticsPanel.cpp mdIosDiagnosticsPanel.h
 	mdPluginEditorState.cpp mdPluginEditorState.h
 	mdProductSkinPolicy.h
 	mdProductSkins.h

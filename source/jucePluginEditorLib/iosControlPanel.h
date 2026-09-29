@@ -49,10 +49,15 @@ namespace jucePluginEditorLib
 		// message-loop iteration.
 		void requestClose(std::function<void()> _afterClose = {});
 
-		void importRom();
-		void openSettings();
+			void importRom();
+			void openSettings();
 
-		juce::Rectangle<int> safeArea() const;
+			// Only ever reachable when m_state.hasDiagnosticsPanel() is true
+			// (iOS Standalone MM today); inert for every other product.
+			void openDiagnostics();
+			void closeDiagnostics();
+
+			juce::Rectangle<int> safeArea() const;
 
 		PluginEditorState& m_state;
 		pluginLib::Processor& m_processor;
@@ -73,9 +78,14 @@ namespace jucePluginEditorLib
 		juce::Label* m_importStatus = nullptr;
 		juce::Slider* m_volume = nullptr;
 
-		std::unique_ptr<juce::FileChooser> m_fileChooser;
+			std::unique_ptr<juce::FileChooser> m_fileChooser;
 
-		juce::Rectangle<int> m_panelBounds;
+			// Non-null while a product-supplied diagnostics screen (see
+			// PluginEditorState::createDiagnosticsPanel) is shown in place of
+			// the normal row list. Opaque to this class - it only hosts it.
+			std::unique_ptr<juce::Component> m_diagnosticsPanel;
+
+			juce::Rectangle<int> m_panelBounds;
 
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(IosControlPanel)
 	};

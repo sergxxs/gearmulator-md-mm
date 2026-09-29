@@ -77,6 +77,16 @@ namespace jucePluginEditorLib
 		addSectionHeader("APPEARANCE");
 		addButton("Skin & GUI Settings...", [this] { openSettings(); });
 
+		// DIAGNOSTICS
+		// Only shown for products/platforms that actually supply a panel
+		// (today: iOS Standalone MM) - inert everywhere else, since
+		// hasDiagnosticsPanel() defaults to false.
+		if(m_state.hasDiagnosticsPanel())
+		{
+			addSectionHeader("DIAGNOSTICS");
+			addButton("Performance & Emulator Log...", [this] { openDiagnostics(); });
+		}
+
 		// DATA
 		addSectionHeader("DATA");
 		addButton("Copy Patch to Clipboard", [this]
@@ -171,6 +181,25 @@ namespace jucePluginEditorLib
 		});
 	}
 
+	void IosControlPanel::openDiagnostics()
+	{
+		m_diagnosticsPanel = m_state.createDiagnosticsPanel([this] { closeDiagnostics(); });
+		if(!m_diagnosticsPanel)
+			return;	// product declared support but returned none; stay on the row list
+		addAndMakeVisible(*m_diagnosticsPanel);
+		m_viewport.setVisible(false);
+		resized();
+		repaint();
+	}
+
+	void IosControlPanel::closeDiagnostics()
+	{
+		m_diagnosticsPanel.reset();
+		m_viewport.setVisible(true);
+		resized();
+		repaint();
+	}
+
 	void IosControlPanel::importRom()
 	{
 		// Same native-picker pattern the project already uses for storage
@@ -260,6 +289,14 @@ namespace jucePluginEditorLib
 		const auto panelW = juce::jmin(area.getWidth() - 24, g_maxPanelWidth);
 		m_panelBounds = juce::Rectangle<int>(panelW, area.getHeight() - 24).withCentre(area.getCentre());
 
+		if(m_diagnosticsPanel)
+		{
+			// The diagnostics panel replaces the row list entirely inside
+			// the same card; it lays out its own rows.
+			m_diagnosticsPanel->setBounds(m_panelBounds.reduced(12));
+			return;
+		}
+
 		m_viewport.setBounds(m_panelBounds.reduced(12));
 
 		const auto w = m_viewport.getWidth() - 12;	// room for the scrollbar
@@ -283,9 +320,15 @@ namespace jucePluginEditorLib
 
 	void IosControlPanel::mouseDown(const juce::MouseEvent& _event)
 	{
-		// Tapping outside the panel returns to the synth UI.
 		if(!m_panelBounds.contains(_event.getPosition()))
-			requestClose();
+		{
+			// Tapping outside the panel steps back one level: out of
+			// diagnostics first, then out of the control panel entirely.
+			if(m_diagnosticsPanel)
+				closeDiagnostics();
+			else
+				requestClose();
+		}
 	}
 }
 

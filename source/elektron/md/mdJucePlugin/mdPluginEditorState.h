@@ -19,5 +19,11 @@ namespace mdJucePlugin
 		// existing md::Rom / md::RomLoader checks (exact size + fingerprint).
 		RomImportResult validateRomFile(const std::string& _path) override;
 		std::string getRomStatusText() override;
+
+		// Self-contained "Performance & Emulator Log" diagnostics screen,
+		// iOS Standalone MM only (see .cpp for the exact gate); inert
+		// (returns false/nullptr) for MD and every other product/platform.
+		bool hasDiagnosticsPanel() const override;
+		std::unique_ptr<juce::Component> createDiagnosticsPanel(std::function<void()> _onClose) override;
 	};
 }

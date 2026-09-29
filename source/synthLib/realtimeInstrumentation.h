@@ -65,6 +65,14 @@ namespace synthLib
 		uint64_t controlLockWaitCount = 0;
 		uint64_t controlLockWaitNanoseconds = 0;
 		uint64_t controlLockWaitMaxNanoseconds = 0;
+		// Non-blocking probe counters: how often a non-realtime caller (the
+		// iOS diagnostics UI's poll timer) could vs. could not immediately
+		// acquire the same device lock, without ever waiting for it. A
+		// rising failure count alongside otherwise-normal scheduler/DSP
+		// numbers is the signature of UI starvation from lock contention,
+		// as distinct from the emulator itself running slow.
+		uint64_t uiTryLockSuccessCount = 0;
+		uint64_t uiTryLockFailureCount = 0;
 		// Diagnostic for the "does the scheduler build a cycle backlog after
 		// firmware becomes valid" question: one sample per Hardware::advance()
 		// call (i.e. once per host audio chunk), recorded only while a device
@@ -192,6 +200,10 @@ namespace synthLib
 		// for the device (normally the UI/message thread), never from the
 		// realtime audio callback itself.
 		void recordControlLockWait(uint64_t _nanoseconds) noexcept;
+		// Called only by a non-blocking device-lock probe (never the
+		// blocking withDeviceLocked, never the realtime audio callback).
+		// See Plugin::tryLockDeviceForDiagnostics.
+		void recordUiTryLock(bool _acquired) noexcept;
 		// Cheap check so a caller (e.g. md::Hardware::advance()) can skip taking
 		// its own diagnostic timestamps/cycle snapshots entirely when nothing
 		// is capturing this callback.
@@ -261,6 +273,8 @@ namespace synthLib
 		std::atomic<uint64_t> m_controlLockWaitCount{0};
 		std::atomic<uint64_t> m_controlLockWaitNanoseconds{0};
 		std::atomic<uint64_t> m_controlLockWaitMaxNanoseconds{0};
+		std::atomic<uint64_t> m_uiTryLockSuccessCount{0};
+		std::atomic<uint64_t> m_uiTryLockFailureCount{0};
 		std::atomic<uint64_t> m_schedulerAdvanceCount{0};
 		std::atomic<uint64_t> m_schedulerMachineFrames{0};
 		std::atomic<uint64_t> m_schedulerUcCyclesExecuted{0};

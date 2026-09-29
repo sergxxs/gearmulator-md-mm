@@ -9,6 +9,10 @@
 
 #include "mdLib/mdromloader.h"
 
+#if JUCE_IOS
+#include "mdIosDiagnosticsPanel.h"
+#endif
+
 #include "juce_events/juce_events.h"
 #include "jucePluginEditorLib/rendererPreferenceKeys.h"
 #include "juceRmlUi/rmlMenu.h"
@@ -179,5 +183,31 @@ namespace mdJucePlugin
 
 		return std::string("No firmware installed. Import the ")
 			+ expectedFirmwareName(model) + " 8 MB .bin image.";
+	}
+
+	bool PluginEditorState::hasDiagnosticsPanel() const
+	{
+#if JUCE_IOS
+		// MM only, iOS Standalone only: MD keeps using the existing
+		// long-press "Performance diagnostics" context menu unchanged.
+		const auto& processor = static_cast<AudioPluginAudioProcessor&>(m_processor);
+		return juce::JUCEApplicationBase::isStandaloneApp()
+			&& processor.getModel() == md::MachineModel::Monomachine;
+#else
+		return false;
+#endif
+	}
+
+	std::unique_ptr<juce::Component> PluginEditorState::createDiagnosticsPanel(std::function<void()> _onClose)
+	{
+#if JUCE_IOS
+		if(!hasDiagnosticsPanel())
+			return nullptr;
+		auto& processor = static_cast<AudioPluginAudioProcessor&>(m_processor);
+		return std::make_unique<IosDiagnosticsPanel>(processor, std::move(_onClose));
+#else
+		juce::ignoreUnused(_onClose);
+		return nullptr;
+#endif
 	}
 }

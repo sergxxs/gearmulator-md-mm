@@ -328,6 +328,13 @@ std::string PluginEditorState::getRomStatusText()
 		: "No valid firmware found - the device is not running.";
 }
 
+std::unique_ptr<juce::Component> PluginEditorState::createDiagnosticsPanel(std::function<void()>)
+{
+	// Products with a diagnostics panel override this (see
+	// mdJucePlugin::PluginEditorState); by default there is none.
+	return nullptr;
+}
+
 void PluginEditorState::enableDspBridge(const bool _enable)
 {
 	if (_enable && !m_remoteServerList)

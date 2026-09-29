@@ -99,6 +99,23 @@ namespace synthLib
 			return std::forward<Callback>(_callback)(m_device);
 		}
 
+		// Diagnostic-only, non-blocking sibling of withDeviceLocked: used
+		// exclusively by the iOS diagnostics UI's periodic poll (never the
+		// realtime audio callback, never a new thread) to find out whether
+		// the same device lock Plugin::process() holds for the duration of
+		// one host block is currently free, without ever waiting for it. On
+		// contention this returns false immediately, so diagnostics stay
+		// live and responsive even while the audio thread is overrunning
+		// and holding the lock. See realtimeInstrumentation's
+		// uiTryLock* fields in the performance report.
+		bool tryLockDeviceForDiagnostics() const noexcept
+		{
+			std::unique_lock<std::recursive_mutex> lock(m_lock, std::try_to_lock);
+			const auto acquired = lock.owns_lock();
+			m_realtimeInstrumentation.recordUiTryLock(acquired);
+			return acquired;
+		}
+
 #if !SYNTHLIB_DEMO_MODE
 		bool getState(std::vector<uint8_t>& _state, StateType _type) const;
 		bool setState(const std::vector<uint8_t>& _state) const;

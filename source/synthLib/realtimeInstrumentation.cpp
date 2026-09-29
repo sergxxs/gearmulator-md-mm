@@ -79,6 +79,8 @@ namespace synthLib
 		m_controlLockWaitCount.store(0, std::memory_order_relaxed);
 		m_controlLockWaitNanoseconds.store(0, std::memory_order_relaxed);
 		m_controlLockWaitMaxNanoseconds.store(0, std::memory_order_relaxed);
+		m_uiTryLockSuccessCount.store(0, std::memory_order_relaxed);
+		m_uiTryLockFailureCount.store(0, std::memory_order_relaxed);
 		m_schedulerAdvanceCount.store(0, std::memory_order_relaxed);
 		m_schedulerMachineFrames.store(0, std::memory_order_relaxed);
 		m_schedulerUcCyclesExecuted.store(0, std::memory_order_relaxed);
@@ -137,6 +139,8 @@ namespace synthLib
 		result.controlLockWaitCount = m_controlLockWaitCount.load(std::memory_order_relaxed);
 		result.controlLockWaitNanoseconds = m_controlLockWaitNanoseconds.load(std::memory_order_relaxed);
 		result.controlLockWaitMaxNanoseconds = m_controlLockWaitMaxNanoseconds.load(std::memory_order_relaxed);
+		result.uiTryLockSuccessCount = m_uiTryLockSuccessCount.load(std::memory_order_relaxed);
+		result.uiTryLockFailureCount = m_uiTryLockFailureCount.load(std::memory_order_relaxed);
 		result.schedulerAdvanceCount = m_schedulerAdvanceCount.load(std::memory_order_relaxed);
 		result.schedulerMachineFrames = m_schedulerMachineFrames.load(std::memory_order_relaxed);
 		result.schedulerUcCyclesExecuted = m_schedulerUcCyclesExecuted.load(std::memory_order_relaxed);
@@ -450,6 +454,16 @@ namespace synthLib
 		m_controlLockWaitCount.fetch_add(1, std::memory_order_relaxed);
 		m_controlLockWaitNanoseconds.fetch_add(_nanoseconds, std::memory_order_relaxed);
 		updateMaximum(m_controlLockWaitMaxNanoseconds, _nanoseconds);
+	}
+
+	void RealtimeInstrumentation::recordUiTryLock(const bool _acquired) noexcept
+	{
+		if(!isEnabled())
+			return;
+		if(_acquired)
+			m_uiTryLockSuccessCount.fetch_add(1, std::memory_order_relaxed);
+		else
+			m_uiTryLockFailureCount.fetch_add(1, std::memory_order_relaxed);
 	}
 
 	bool RealtimeInstrumentation::isCurrentCallbackCaptureActive() noexcept
