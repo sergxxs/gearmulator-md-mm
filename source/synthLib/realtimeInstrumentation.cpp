@@ -79,6 +79,17 @@ namespace synthLib
 		m_controlLockWaitCount.store(0, std::memory_order_relaxed);
 		m_controlLockWaitNanoseconds.store(0, std::memory_order_relaxed);
 		m_controlLockWaitMaxNanoseconds.store(0, std::memory_order_relaxed);
+		m_schedulerAdvanceCount.store(0, std::memory_order_relaxed);
+		m_schedulerMachineFrames.store(0, std::memory_order_relaxed);
+		m_schedulerUcCyclesExecuted.store(0, std::memory_order_relaxed);
+		m_schedulerUcCyclesMax.store(0, std::memory_order_relaxed);
+		m_schedulerUcUnderrunCount.store(0, std::memory_order_relaxed);
+		m_schedulerDsp1CyclesExecuted.store(0, std::memory_order_relaxed);
+		m_schedulerDsp1CyclesMax.store(0, std::memory_order_relaxed);
+		m_schedulerDsp2CyclesExecuted.store(0, std::memory_order_relaxed);
+		m_schedulerDsp2CyclesMax.store(0, std::memory_order_relaxed);
+		m_schedulerNanoseconds.store(0, std::memory_order_relaxed);
+		m_schedulerMaxNanoseconds.store(0, std::memory_order_relaxed);
 		m_resamplerCallCount.store(0, std::memory_order_relaxed);
 		m_resamplerNanoseconds.store(0, std::memory_order_relaxed);
 		m_resamplerMaxNanoseconds.store(0, std::memory_order_relaxed);
@@ -126,6 +137,17 @@ namespace synthLib
 		result.controlLockWaitCount = m_controlLockWaitCount.load(std::memory_order_relaxed);
 		result.controlLockWaitNanoseconds = m_controlLockWaitNanoseconds.load(std::memory_order_relaxed);
 		result.controlLockWaitMaxNanoseconds = m_controlLockWaitMaxNanoseconds.load(std::memory_order_relaxed);
+		result.schedulerAdvanceCount = m_schedulerAdvanceCount.load(std::memory_order_relaxed);
+		result.schedulerMachineFrames = m_schedulerMachineFrames.load(std::memory_order_relaxed);
+		result.schedulerUcCyclesExecuted = m_schedulerUcCyclesExecuted.load(std::memory_order_relaxed);
+		result.schedulerUcCyclesMax = m_schedulerUcCyclesMax.load(std::memory_order_relaxed);
+		result.schedulerUcUnderrunCount = m_schedulerUcUnderrunCount.load(std::memory_order_relaxed);
+		result.schedulerDsp1CyclesExecuted = m_schedulerDsp1CyclesExecuted.load(std::memory_order_relaxed);
+		result.schedulerDsp1CyclesMax = m_schedulerDsp1CyclesMax.load(std::memory_order_relaxed);
+		result.schedulerDsp2CyclesExecuted = m_schedulerDsp2CyclesExecuted.load(std::memory_order_relaxed);
+		result.schedulerDsp2CyclesMax = m_schedulerDsp2CyclesMax.load(std::memory_order_relaxed);
+		result.schedulerNanoseconds = m_schedulerNanoseconds.load(std::memory_order_relaxed);
+		result.schedulerMaxNanoseconds = m_schedulerMaxNanoseconds.load(std::memory_order_relaxed);
 		result.resamplerCallCount = m_resamplerCallCount.load(std::memory_order_relaxed);
 		result.resamplerNanoseconds = m_resamplerNanoseconds.load(std::memory_order_relaxed);
 		result.resamplerMaxNanoseconds = m_resamplerMaxNanoseconds.load(std::memory_order_relaxed);
@@ -428,6 +450,42 @@ namespace synthLib
 		m_controlLockWaitCount.fetch_add(1, std::memory_order_relaxed);
 		m_controlLockWaitNanoseconds.fetch_add(_nanoseconds, std::memory_order_relaxed);
 		updateMaximum(m_controlLockWaitMaxNanoseconds, _nanoseconds);
+	}
+
+	bool RealtimeInstrumentation::isCurrentCallbackCaptureActive() noexcept
+	{
+		return g_callbackContext.owner != nullptr && g_callbackContext.owner->isEnabled();
+	}
+
+	void RealtimeInstrumentation::recordCurrentSchedulerAdvance(const bool _firmwareValid,
+		const uint32_t _machineFrames, const uint64_t _ucCyclesRequested,
+		const uint64_t _ucCyclesExecuted, const uint64_t _dsp1CyclesExecuted,
+		const uint64_t _dsp2CyclesExecuted, const uint64_t _nanoseconds) noexcept
+	{
+		auto* const owner = g_callbackContext.owner;
+		if(!owner || !owner->isEnabled())
+			return;
+		if(!_firmwareValid)
+			return;	// nothing to measure before a device is actually emulating
+		owner->m_schedulerAdvanceCount.fetch_add(1, std::memory_order_relaxed);
+		owner->m_schedulerMachineFrames.fetch_add(_machineFrames, std::memory_order_relaxed);
+		owner->m_schedulerUcCyclesExecuted.fetch_add(_ucCyclesExecuted, std::memory_order_relaxed);
+		updateMaximum(owner->m_schedulerUcCyclesMax, _ucCyclesExecuted);
+		owner->m_schedulerDsp1CyclesExecuted.fetch_add(_dsp1CyclesExecuted, std::memory_order_relaxed);
+		updateMaximum(owner->m_schedulerDsp1CyclesMax, _dsp1CyclesExecuted);
+		owner->m_schedulerDsp2CyclesExecuted.fetch_add(_dsp2CyclesExecuted, std::memory_order_relaxed);
+		updateMaximum(owner->m_schedulerDsp2CyclesMax, _dsp2CyclesExecuted);
+		owner->m_schedulerNanoseconds.fetch_add(_nanoseconds, std::memory_order_relaxed);
+		updateMaximum(owner->m_schedulerMaxNanoseconds, _nanoseconds);
+		// Hardware::advance()'s while(schedStep()) loop is unconditional: it
+		// always runs until every virtual clock (UC/DSP1/DSP2) reaches the
+		// same target, which only ever grows by this call's _machineFrames.
+		// executed should therefore equal requested on every single call. A
+		// nonzero count here would mean a chunk finished without doing the
+		// full amount of work its frame count required - the actual
+		// runaway/backlog signature this counter exists to catch.
+		if(_ucCyclesExecuted < _ucCyclesRequested)
+			owner->m_schedulerUcUnderrunCount.fetch_add(1, std::memory_order_relaxed);
 	}
 
 	void RealtimeInstrumentation::recordResampler(const uint64_t _nanoseconds,

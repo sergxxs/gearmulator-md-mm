@@ -65,6 +65,26 @@ namespace synthLib
 		uint64_t controlLockWaitCount = 0;
 		uint64_t controlLockWaitNanoseconds = 0;
 		uint64_t controlLockWaitMaxNanoseconds = 0;
+		// Diagnostic for the "does the scheduler build a cycle backlog after
+		// firmware becomes valid" question: one sample per Hardware::advance()
+		// call (i.e. once per host audio chunk), recorded only while a device
+		// is actually valid/emulating. If ucCyclesExecuted is ever less than
+		// what that chunk's frame count required, work was deferred instead of
+		// completed in-callback - that is the runaway/backlog signature. If it
+		// never happens, the scheduler always finishes the exact amount of
+		// work the real hardware clock requires, no more, no less, and a slow
+		// callback is purely an interpreter-speed problem, not a scheduling bug.
+		uint64_t schedulerAdvanceCount = 0;
+		uint64_t schedulerMachineFrames = 0;
+		uint64_t schedulerUcCyclesExecuted = 0;
+		uint64_t schedulerUcCyclesMax = 0;
+		uint64_t schedulerUcUnderrunCount = 0;
+		uint64_t schedulerDsp1CyclesExecuted = 0;
+		uint64_t schedulerDsp1CyclesMax = 0;
+		uint64_t schedulerDsp2CyclesExecuted = 0;
+		uint64_t schedulerDsp2CyclesMax = 0;
+		uint64_t schedulerNanoseconds = 0;
+		uint64_t schedulerMaxNanoseconds = 0;
 		uint64_t resamplerCallCount = 0;
 		uint64_t resamplerNanoseconds = 0;
 		uint64_t resamplerMaxNanoseconds = 0;
@@ -172,6 +192,18 @@ namespace synthLib
 		// for the device (normally the UI/message thread), never from the
 		// realtime audio callback itself.
 		void recordControlLockWait(uint64_t _nanoseconds) noexcept;
+		// Cheap check so a caller (e.g. md::Hardware::advance()) can skip taking
+		// its own diagnostic timestamps/cycle snapshots entirely when nothing
+		// is capturing this callback.
+		static bool isCurrentCallbackCaptureActive() noexcept;
+		// Called once per md::Hardware::advance() (i.e. once per host audio
+		// chunk), from deep inside mdLib, using the same "current callback"
+		// context as recordCurrentPanelDelivery below - never from every DSP
+		// instruction, so this stays cheap enough for a release build.
+		static void recordCurrentSchedulerAdvance(bool _firmwareValid,
+			uint32_t _machineFrames, uint64_t _ucCyclesRequested,
+			uint64_t _ucCyclesExecuted, uint64_t _dsp1CyclesExecuted,
+			uint64_t _dsp2CyclesExecuted, uint64_t _nanoseconds) noexcept;
 		void recordResampler(uint64_t _nanoseconds, uint64_t _deviceNanoseconds,
 			size_t _hostFrames, bool _resamplingActive) noexcept;
 
@@ -229,6 +261,17 @@ namespace synthLib
 		std::atomic<uint64_t> m_controlLockWaitCount{0};
 		std::atomic<uint64_t> m_controlLockWaitNanoseconds{0};
 		std::atomic<uint64_t> m_controlLockWaitMaxNanoseconds{0};
+		std::atomic<uint64_t> m_schedulerAdvanceCount{0};
+		std::atomic<uint64_t> m_schedulerMachineFrames{0};
+		std::atomic<uint64_t> m_schedulerUcCyclesExecuted{0};
+		std::atomic<uint64_t> m_schedulerUcCyclesMax{0};
+		std::atomic<uint64_t> m_schedulerUcUnderrunCount{0};
+		std::atomic<uint64_t> m_schedulerDsp1CyclesExecuted{0};
+		std::atomic<uint64_t> m_schedulerDsp1CyclesMax{0};
+		std::atomic<uint64_t> m_schedulerDsp2CyclesExecuted{0};
+		std::atomic<uint64_t> m_schedulerDsp2CyclesMax{0};
+		std::atomic<uint64_t> m_schedulerNanoseconds{0};
+		std::atomic<uint64_t> m_schedulerMaxNanoseconds{0};
 		std::atomic<uint64_t> m_resamplerCallCount{0};
 		std::atomic<uint64_t> m_resamplerNanoseconds{0};
 		std::atomic<uint64_t> m_resamplerMaxNanoseconds{0};

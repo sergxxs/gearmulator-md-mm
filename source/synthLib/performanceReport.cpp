@@ -87,6 +87,11 @@ namespace synthLib
 		FIELD(controlLockWaitMaxNanoseconds); FIELD(resamplerCallCount);
 		FIELD(resamplerNanoseconds); FIELD(resamplerMaxNanoseconds); FIELD(resamplerHostFrames);
 		FIELD(resamplingActiveCallbackCount); FIELD(deviceProcessNanoseconds); FIELD(deviceProcessMaxNanoseconds);
+		FIELD(schedulerAdvanceCount); FIELD(schedulerMachineFrames);
+		FIELD(schedulerUcCyclesExecuted); FIELD(schedulerUcCyclesMax); FIELD(schedulerUcUnderrunCount);
+		FIELD(schedulerDsp1CyclesExecuted); FIELD(schedulerDsp1CyclesMax);
+		FIELD(schedulerDsp2CyclesExecuted); FIELD(schedulerDsp2CyclesMax);
+		FIELD(schedulerNanoseconds); FIELD(schedulerMaxNanoseconds);
 		FIELD(jitCompilationCount); FIELD(liveJitCompilationCount); FIELD(deferredCandidateJitCompilationCount);
 		FIELD(callbacksWithJitCompilation); FIELD(deferredDualMachineCallbackCount);
 		FIELD(deferredCandidateAdvanceCount); FIELD(deferredCandidateFrames);

@@ -1617,8 +1617,34 @@ namespace md
 		serviceRamRecordingMode();
 		m_schedFramesTotal += static_cast<double>(_machineFrames);
 
+		// Diagnostic only (see RealtimeInstrumentation::recordCurrentSchedulerAdvance):
+		// measure exactly how much emulated work this one chunk actually did,
+		// to check whether it ever falls short of what its frame count
+		// requires - the signature of a growing cycle backlog - or whether it
+		// always does precisely the expected amount, which would mean a slow
+		// callback is purely an interpreter-speed problem.
+		const auto diagEnabled = synthLib::RealtimeInstrumentation::isCurrentCallbackCaptureActive();
+		const auto diagUcStart = diagEnabled ? m_schedUcCyclesDone : 0;
+		const auto diagDsp1Start = diagEnabled ? m_dspMixer.dsp().getCycles() : 0;
+		const auto diagDsp2Start = diagEnabled ? m_dspProducer.dsp().getCycles() : 0;
+		const auto diagStart = diagEnabled ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+
 		while(schedStep())
 		{
+		}
+
+		if(diagEnabled)
+		{
+			const auto diagNanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(
+				std::chrono::steady_clock::now() - diagStart).count();
+			const auto ucRequested = static_cast<uint64_t>(
+				static_cast<double>(_machineFrames) * schedUcCyclesPerFrame());
+			synthLib::RealtimeInstrumentation::recordCurrentSchedulerAdvance(
+				isValid(), _machineFrames, ucRequested,
+				m_schedUcCyclesDone - diagUcStart,
+				m_dspMixer.dsp().getCycles() - diagDsp1Start,
+				m_dspProducer.dsp().getCycles() - diagDsp2Start,
+				static_cast<uint64_t>(diagNanoseconds));
 		}
 
 		schedDrainCodecOutput();					// final drain (also covers a UC-only advance window)
