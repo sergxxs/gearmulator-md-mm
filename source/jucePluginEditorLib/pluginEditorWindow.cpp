@@ -40,11 +40,27 @@ EditorWindow::EditorWindow(juce::AudioProcessor& _p, PluginEditorState& _s, juce
 	// touch-reachable entry point. It sits in the safe-area top-right corner
 	// (in the letterbox area when one exists) and never captures touches
 	// outside its own small bounds, so the synth UI stays fully operable.
-	m_iosMenuButton = std::make_unique<juce::TextButton>(juce::CharPointer_UTF8("\xe2\x80\xa2\xe2\x80\xa2\xe2\x80\xa2"));
-	m_iosMenuButton->setAlpha(0.8f);
+	// Clearly labelled (rather than a small glyph) and sized for a reliable
+	// touch target - see layoutUiRootFitViewport() for exact bounds.
+	m_iosMenuButton = std::make_unique<juce::TextButton>("CONTROL");
+	m_iosMenuButton->setAlpha(0.85f);
 	m_iosMenuButton->onClick = [this] { openIosControlPanel(); };
 	m_iosMenuButton->setAlwaysOnTop(true);
 	addAndMakeVisible(*m_iosMenuButton);
+
+	// Direct top-level diagnostics entry point - only for products that
+	// actually have one (iOS Standalone MM). No longer nested behind the
+	// control panel: this is the only reliable way to reach it, since the
+	// tiny/hidden entry points users cannot find are exactly the problem
+	// this button exists to avoid.
+	if(m_state.hasDiagnosticsPanel())
+	{
+		m_iosDiagnosticsButton = std::make_unique<juce::TextButton>("PERFORMANCE & EMULATOR LOG");
+		m_iosDiagnosticsButton->setAlpha(0.85f);
+		m_iosDiagnosticsButton->onClick = [this] { openDiagnosticsPanel(); };
+		m_iosDiagnosticsButton->setAlwaysOnTop(true);
+		addAndMakeVisible(*m_iosDiagnosticsButton);
+	}
 #endif
 
 	setUiRoot(m_state.getUiRoot());
@@ -170,6 +186,17 @@ void EditorWindow::setUiRoot(juce::Component* _component)
 	removeAllChildren();
 	setConstrainer(nullptr);
 
+#if JUCE_IOS
+	// removeAllChildren() above also removes the persistent overlay buttons
+	// and any currently-open overlay panel, since they are ordinary child
+	// components - without this, they silently vanish on every skin
+	// (re)load (including the one this constructor triggers immediately
+	// after creating them), which is exactly why the control-panel entry
+	// point could become unreachable. setAlwaysOnTop() keeps them drawn
+	// above the new UI root regardless of re-add order.
+	restoreIosOverlays();
+#endif
+
 	if(!_component)
 		return;
 
@@ -236,12 +263,20 @@ void EditorWindow::layoutUiRootFitViewport()
 		return;
 
 	// iOS overlays: keep the control-panel button in the safe-area top-right
-	// corner and the panel (when open) covering the whole editor. Positioned
-	// before the early-out below so they always track the viewport.
+	// corner, the diagnostics button in the mirrored top-left corner, and
+	// either panel (when open) covering the whole editor. Both corners sit
+	// in the same safe-area band the original single button already used
+	// (letterbox space outside the synth UI on the aspect ratios this skin
+	// targets) - positioned before the early-out below so they always track
+	// the viewport.
 	if(m_iosMenuButton)
-		m_iosMenuButton->setBounds(avail.getRight() - 56, avail.getY() + 8, 48, 36);
+		m_iosMenuButton->setBounds(avail.getRight() - 132, avail.getY() + 8, 124, 44);
+	if(m_iosDiagnosticsButton)
+		m_iosDiagnosticsButton->setBounds(avail.getX() + 8, avail.getY() + 8, 240, 44);
 	if(m_iosControlPanel)
 		m_iosControlPanel->setBounds(getLocalBounds());
+	if(m_iosDiagnosticsPanel)
+		m_iosDiagnosticsPanel->setBounds(getLocalBounds());
 
 	// The skin's logical size (1100x570dp for the MM panel) is the reference
 	// coordinate space. Uniform aspect-fit scale - never stretched per axis -
@@ -303,6 +338,48 @@ void EditorWindow::openIosControlPanel()
 void EditorWindow::closeIosControlPanel()
 {
 	m_iosControlPanel.reset();
+}
+
+void EditorWindow::openDiagnosticsPanel()
+{
+	if(m_iosDiagnosticsPanel || !m_state.hasDiagnosticsPanel())
+		return;
+
+	// Closing can run from a deferred message, so it must survive this
+	// window being destroyed in the meantime - same pattern as
+	// openIosControlPanel() above.
+	const juce::Component::SafePointer<EditorWindow> safeThis(this);
+	m_iosDiagnosticsPanel = m_state.createDiagnosticsPanel(
+		[safeThis]
+		{
+			if(safeThis != nullptr)
+				safeThis->closeDiagnosticsPanel();
+		});
+
+	if(!m_iosDiagnosticsPanel)
+		return;	// hasDiagnosticsPanel() already gated this; defensive only
+
+	m_iosDiagnosticsPanel->setAlwaysOnTop(true);
+	addAndMakeVisible(*m_iosDiagnosticsPanel);
+	m_iosDiagnosticsPanel->setBounds(getLocalBounds());
+	m_iosDiagnosticsPanel->toFront(true);
+}
+
+void EditorWindow::closeDiagnosticsPanel()
+{
+	m_iosDiagnosticsPanel.reset();
+}
+
+void EditorWindow::restoreIosOverlays()
+{
+	if(m_iosMenuButton)
+		addAndMakeVisible(*m_iosMenuButton);
+	if(m_iosDiagnosticsButton)
+		addAndMakeVisible(*m_iosDiagnosticsButton);
+	if(m_iosControlPanel)
+		addAndMakeVisible(*m_iosControlPanel);
+	if(m_iosDiagnosticsPanel)
+		addAndMakeVisible(*m_iosDiagnosticsPanel);
 }
 #endif
 

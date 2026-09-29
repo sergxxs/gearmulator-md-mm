@@ -51,6 +51,20 @@ namespace jucePluginEditorLib
 		// settings access, about) plus the button that opens it.
 		void openIosControlPanel();
 		void closeIosControlPanel();
+
+		// Direct, always-visible entry point to the "Performance &
+		// Emulator Log" diagnostics screen (see
+		// PluginEditorState::createDiagnosticsPanel). Deliberately
+		// bypasses the control panel entirely - no submenu, no scrolling.
+		void openDiagnosticsPanel();
+		void closeDiagnosticsPanel();
+
+		// removeAllChildren() in setUiRoot() (called on every skin
+		// (re)load, including once from this constructor) would
+		// otherwise silently drop these persistent overlay buttons/
+		// panels from the component tree - re-adds whichever of them
+		// currently exist.
+		void restoreIosOverlays();
 #endif
 
 		void timerCallback() override;
@@ -67,6 +81,11 @@ namespace jucePluginEditorLib
 #if JUCE_IOS
 		std::unique_ptr<juce::TextButton> m_iosMenuButton;
 		std::unique_ptr<IosControlPanel> m_iosControlPanel;
+
+		// Only created when m_state.hasDiagnosticsPanel() is true (iOS
+		// Standalone MM today); null - and never shown - everywhere else.
+		std::unique_ptr<juce::TextButton> m_iosDiagnosticsButton;
+		std::unique_ptr<juce::Component> m_iosDiagnosticsPanel;
 #endif
 
 		JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(EditorWindow)
