@@ -23,6 +23,9 @@
 
 #include "dsp56kBase/fastmath.h"
 #include "dsp56kBase/logging.h"
+#if JUCE_IOS
+#include "dsp56kBase/threadtools.h"
+#endif
 
 #include "juceUiLib/messageBox.h"
 
@@ -786,6 +789,25 @@ namespace pluginLib
 	{
 	    juce::ScopedNoDenormals noDenormals;
 	    const int numSamples = buffer.getNumSamples();
+
+#if JUCE_IOS
+	    // Monomachine iOS realtime fix: raise this callback's QOS class to
+	    // user-interactive for the duration of the block so the interpreter
+	    // (no JIT on iOS) is not preempted by normal-priority host/UI work.
+	    // dsp56k::ThreadTools::setCurrentThreadPriority() already dispatches
+	    // through pthread_set_qos_class_self_np()/thread_policy_set() on every
+	    // Apple platform (the "macOS" branch is plain Darwin code, not
+	    // AppKit), so this is a per-thread, no-allocation, no-new-thread call
+	    // that is equally valid on iOS. Scoped to Monomachine only, matching
+	    // the reported iOS Console signature (ClientHALIODurationExceededBudget
+	    // / SafetyViolationOccurred appearing only once MM firmware starts
+	    // rendering); other products and other platforms are unaffected.
+	    if(getProperties().name == "Gearmulator MM")
+	    {
+	        (void)dsp56k::ThreadTools::setCurrentThreadPriority(dsp56k::ThreadPriority::Highest);
+	    }
+#endif
+
 		synthLib::RealtimeInstrumentation::CallbackScope instrumentation(
 			getPlugin().getRealtimeInstrumentation(), static_cast<size_t>(numSamples),
 			getSampleRate());

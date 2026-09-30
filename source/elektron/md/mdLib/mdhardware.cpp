@@ -120,6 +120,22 @@ namespace md
 		, m_dspMixer(*this, m_uc.getHdi08Dsp1(), 0)		// DSP1, mixer/main
 		, m_dspProducer(*this, m_uc.getHdi08Dsp2(), 1)	// DSP2, producer
 	{
+		// Monomachine iOS realtime fix: pre-reserve the audio output buffers so
+		// ensureBufferSize()'s vector::resize() - called from processAudio() on
+		// the realtime audio thread for the first callback and for every new
+		// max blocksize - never has to grow the vector via a heap allocation.
+		// An allocation on the iOS audio-render thread is exactly what trips
+		// the OS realtime-safety checks (observed as SafetyViolationOccurred /
+		// ClientHALIODurationExceededBudget once MM firmware starts rendering).
+		// 16384 frames covers any realistic host block (iOS is typically
+		// 128-1024) with headroom; ensureBufferSize() then only changes the
+		// logical size, never the capacity. Scoped to Monomachine only.
+		if(isMonomachine())
+		{
+			for(auto& out : m_audioOutputs)
+				out.reserve(16384);
+		}
+
 		// Ship the validated bounded dispatcher by default while retaining the
 		// established path as a field fallback and exact A/B control.
 		const auto* const boundedJit = std::getenv("GEARMULATOR_MDMM_BOUNDED_JIT");
@@ -496,6 +512,20 @@ namespace md
 		// Each mixer ESSI1 output frame advances the codec frame counter used by
 		// the audio plumbing.
 		m_dspMixer.getPeriph().getEssi1().setCallback([this](dsp56k::Audio*){ onEssiCallbackMixer(); });
+
+		// Monomachine: the audible signal path runs on the producer (DSP2),
+		// not the mixer (DSP1) - only DSP1's ESSI1 TX ring was drained above,
+		// so DSP2's TX ring (RingBuffer<TxFrame, ...>::push_back()) filled and
+		// then blocked on its write semaphore forever once the firmware
+		// started producing audio, freezing the single scheduler thread that
+		// also carries MIDI/touch handling - the observed "audio stutters and
+		// touch stops responding shortly after firmware boot". Register the
+		// same drain callback on the producer's ESSI1 so its ring is kept
+		// shallow exactly like the mixer's.
+		if(isMonomachine())
+		{
+			m_dspProducer.getPeriph().getEssi1().setCallback([this](dsp56k::Audio*){ onEssiCallbackMixer(); });
+		}
 
 		// Inter-DSP clock wiring. Each DSP runs the same program, which probes its ESSI1
 		// pins (Port D bits 2/3 = SC12 frame sync / SCK1 bit clock, read as GPIO) to decide
@@ -1263,6 +1293,29 @@ namespace md
 				});
 				if(dropped)
 					m_schedHostAudioOverflow.fetch_add(1, std::memory_order_relaxed);
+			}
+		}
+
+		// Monomachine: the producer (DSP2) is the active audio output (see the
+		// registration comment above); drain its ESSI1 TX ring the same way so
+		// it never fills and blocks on its write semaphore.
+		if(isMonomachine())
+		{
+			auto& prodOut = m_dspProducer.getPeriph().getEssi1().getAudioOutputs();
+			while(!prodOut.empty())
+			{
+				auto frame = prodOut.pop_front();
+
+				if(m_schedHostAudioActive)
+				{
+					const bool dropped = m_schedHostAudio.emplace(
+						[&frame](RealtimeHostAudioQueue::Frame& _hostFrame)
+					{
+						mapCodecOutputFrame(_hostFrame, frame);
+					});
+					if(dropped)
+						m_schedHostAudioOverflow.fetch_add(1, std::memory_order_relaxed);
+				}
 			}
 		}
 	}
